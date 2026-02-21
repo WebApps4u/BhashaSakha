@@ -174,16 +174,16 @@ export default function SharedSession() {
   }, [sessionId])
 
   if (loading) {
-    return <div className="h-48 animate-pulse rounded-2xl bg-slate-100" />
+    return <div className="h-48 animate-pulse rounded-2xl bg-slate-100 dark:bg-white/10" />
   }
 
   if (!canView) {
     return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-white/5">
         <h1 className="text-lg font-semibold">Shared session</h1>
-        <p className="mt-2 text-sm text-slate-600">This session is not public, or it does not exist.</p>
+        <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">This session is not public, or it does not exist.</p>
         <div className="mt-4">
-          <Link to="/live" className="text-sm font-medium text-slate-900 underline">
+          <Link to="/live" className="text-sm font-medium text-slate-900 underline dark:text-slate-50">
             Go to Live
           </Link>
         </div>
@@ -202,19 +202,19 @@ export default function SharedSession() {
   })
 
   return (
-    <div className="relative min-h-[calc(100vh-57px)] bg-white">
+    <div className="relative min-h-[calc(100vh-57px)] bg-white dark:bg-slate-950">
       <div className="mx-auto max-w-6xl px-4 py-10">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="text-xs text-slate-500">Public live view</div>
+            <div className="text-xs text-slate-500 dark:text-slate-300">Public live view</div>
             <h1 className="mt-1 text-2xl font-semibold tracking-tight">{session.title || 'Untitled session'}</h1>
-            <div className="mt-2 text-sm text-slate-600">Captions and translations update in real-time.</div>
+            <div className="mt-2 text-sm text-slate-600 dark:text-slate-300">Captions and translations update in real-time.</div>
           </div>
           <div className="text-right">
-            <Link to="/live" className="text-sm font-medium text-slate-900 underline">
+            <Link to="/live" className="text-sm font-medium text-slate-900 underline dark:text-slate-50">
               Start your own
             </Link>
-            {error ? <div className="mt-2 max-w-xs text-xs text-rose-700">{error}</div> : null}
+            {error ? <div className="mt-2 max-w-xs text-xs text-rose-700 dark:text-rose-200">{error}</div> : null}
           </div>
         </div>
       </div>

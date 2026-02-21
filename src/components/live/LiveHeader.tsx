@@ -17,7 +17,7 @@ function LangSelect({
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none focus:border-slate-300"
+      className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none focus:border-slate-300 dark:border-white/10 dark:bg-white/5 dark:text-slate-50"
     >
       {allowAuto ? <option value="auto">Auto-detect</option> : null}
       {LANGUAGES.map((l) => (
@@ -48,8 +48,8 @@ function Pill({
       className={
         'h-10 rounded-xl px-4 text-sm transition ' +
         (active
-          ? 'border border-slate-900 bg-slate-900 text-white'
-          : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50') +
+          ? 'border border-slate-900 bg-slate-900 text-white dark:border-white/10 dark:bg-white dark:text-slate-900'
+          : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10') +
         (disabled ? ' opacity-50' : '')
       }
     >
@@ -91,17 +91,19 @@ export default function LiveHeader({
     <div className="mx-auto max-w-6xl px-4 py-10">
       <div className="text-center">
         <h1 className="text-3xl font-semibold tracking-tight">Live Transcription</h1>
-        <div className="mt-2 text-sm text-slate-600">Generate translated captions and audio in real-time.</div>
+        <div className="mt-2 text-sm text-slate-600 dark:text-slate-300">Generate translated captions and audio in real-time.</div>
       </div>
 
       <div className="mt-8 flex justify-center">
-        <div className="inline-flex rounded-full border border-slate-200 bg-white p-1 shadow-sm">
+        <div className="inline-flex rounded-full border border-slate-200 bg-white p-1 shadow-sm dark:border-white/10 dark:bg-white/5">
           <button
             type="button"
             onClick={() => onPrivacy('private')}
             className={
               'rounded-full px-4 py-2 text-sm transition ' +
-              (privacy === 'private' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-50')
+              (privacy === 'private'
+                ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
+                : 'text-slate-600 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-white/10')
             }
           >
             Private
@@ -111,7 +113,9 @@ export default function LiveHeader({
             onClick={() => onPrivacy('shareable')}
             className={
               'rounded-full px-4 py-2 text-sm transition ' +
-              (privacy === 'shareable' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-50')
+              (privacy === 'shareable'
+                ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
+                : 'text-slate-600 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-white/10')
             }
           >
             Shareable
@@ -133,7 +137,7 @@ export default function LiveHeader({
           type="button"
           onClick={onSwap}
           disabled={sourceLang === 'auto' || mode !== 'translate'}
-          className="mx-auto inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50"
+          className="mx-auto inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
           aria-label="Swap languages"
         >
           <ArrowLeftRight className="h-5 w-5" />
@@ -141,10 +145,10 @@ export default function LiveHeader({
         <LangSelect value={targetLang} onChange={(v) => onTargetLang(v)} />
       </div>
 
-      <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+      <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm dark:border-white/10 dark:bg-white/5">
         <div className="min-w-0">
-          <div className="text-sm font-medium text-slate-900">Press and start talking</div>
-          <div className="mt-1 text-xs text-slate-500">
+          <div className="text-sm font-medium text-slate-900 dark:text-slate-50">Press and start talking</div>
+          <div className="mt-1 text-xs text-slate-500 dark:text-slate-300">
             {isSignedIn ? 'Captions appear immediately. Translation appears per finalized phrase.' : 'Sign in is required to start capture.'}
           </div>
         </div>
@@ -153,12 +157,15 @@ export default function LiveHeader({
             type="button"
             onClick={onOpenShare}
             disabled={!canShare}
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
           >
             Share
           </button>
           {editorHref ? (
-            <Link to={editorHref} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800">
+            <Link
+              to={editorHref}
+              className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100"
+            >
               Open editor
             </Link>
           ) : null}

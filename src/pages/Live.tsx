@@ -106,7 +106,7 @@ export default function Live() {
   }
 
   return (
-    <div className="relative min-h-[calc(100vh-57px)] bg-white">
+    <div className="relative min-h-[calc(100vh-57px)] bg-white dark:bg-slate-950">
       <LiveHeader
         mode={mode}
         onMode={setMode}
@@ -130,7 +130,9 @@ export default function Live() {
 
       {live.error || speech.error ? (
         <div className="mx-auto max-w-6xl px-4">
-          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{live.error ?? speech.error}</div>
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
+            {live.error ?? speech.error}
+          </div>
         </div>
       ) : null}
 
@@ -176,9 +178,9 @@ export default function Live() {
       {!canStart ? (
         <div className="fixed inset-x-0 bottom-28 z-10">
           <div className="mx-auto max-w-6xl px-4">
-            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm">
+            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
               Sign in to start live capture.{' '}
-              <Link className="font-medium text-slate-900 underline" to="/login">
+              <Link className="font-medium text-slate-900 underline dark:text-slate-50" to="/login">
                 Go to login
               </Link>
             </div>

@@ -8,7 +8,11 @@ import Live from '@/pages/Live'
 import Account from '@/pages/Account'
 
 function NotFound() {
-  return <div className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600">Page not found.</div>
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+      Page not found.
+    </div>
+  )
 }
 
 export default function App() {

@@ -26,12 +26,12 @@ export default function LiveFloatingControls({
   return (
     <div className="pointer-events-none fixed bottom-6 left-0 right-0 z-20">
       <div className="mx-auto flex max-w-6xl items-center justify-center px-4">
-        <div className="pointer-events-auto flex items-center gap-3 rounded-2xl border border-slate-200 bg-white/90 px-3 py-3 shadow-lg backdrop-blur">
+        <div className="pointer-events-auto flex items-center gap-3 rounded-2xl border border-slate-200 bg-white/90 px-3 py-3 shadow-lg backdrop-blur dark:border-white/10 dark:bg-slate-950/80">
           <button
             type="button"
             onClick={onPause}
             disabled={!supportsSpeech || status !== 'listening'}
-            className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+            className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
             aria-label="Pause"
           >
             <Pause className="h-5 w-5" />
@@ -53,7 +53,7 @@ export default function LiveFloatingControls({
           <button
             type="button"
             onClick={onSettings}
-            className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50"
+            className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
             aria-label="Settings"
           >
             <Settings className="h-5 w-5" />

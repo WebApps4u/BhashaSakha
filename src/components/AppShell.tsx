@@ -1,8 +1,9 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, LogIn, LogOut, Mic2, Settings } from 'lucide-react'
+import { LayoutDashboard, LogIn, LogOut, Mic2, Moon, Settings, Sun } from 'lucide-react'
 import { useEffect } from 'react'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/authStore'
+import { useTheme } from '@/hooks/useTheme'
 
 import type { ComponentType } from 'react'
 
@@ -15,7 +16,9 @@ function NavLink({ to, label, icon: Icon }: { to: string; label: string; icon: C
       to={to}
       className={cn(
         'inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition',
-        isActive ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+        isActive
+          ? 'bg-slate-100 text-slate-900 dark:bg-white/10 dark:text-slate-50'
+          : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-white/5 dark:hover:text-slate-50'
       )}
     >
       <Icon className="h-4 w-4" />
@@ -28,6 +31,7 @@ export default function AppShell() {
   const navigate = useNavigate()
   const location = useLocation()
   const { init, isReady, user, signOut } = useAuthStore()
+  const { theme, toggle } = useTheme()
 
   useEffect(() => {
     void init()
@@ -36,12 +40,12 @@ export default function AppShell() {
   const isFullBleed = location.pathname.startsWith('/live') || location.pathname.startsWith('/s/')
 
   return (
-    <div className="min-h-screen bg-white text-slate-900">
-      <header className="border-b border-slate-200 bg-white/80 backdrop-blur">
+    <div className="min-h-screen bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-50">
+      <header className="border-b border-slate-200 bg-white/80 backdrop-blur dark:border-white/10 dark:bg-slate-950/80">
         <div className={cn('mx-auto flex items-center justify-between px-4', isFullBleed ? 'max-w-6xl py-3' : 'max-w-6xl py-3')}>
           <div className="flex items-center gap-3">
             <Link to="/live" className="inline-flex items-center gap-2 text-sm font-semibold tracking-tight">
-              <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-slate-900 text-white">B</span>
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-slate-900 text-white dark:bg-white dark:text-slate-900">B</span>
               BhashaSakha
             </Link>
             <div className="hidden items-center gap-1 sm:flex">
@@ -52,8 +56,17 @@ export default function AppShell() {
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={toggle}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
+              aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+              title={theme === 'dark' ? 'Light theme' : 'Dark theme'}
+            >
+              {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </button>
             {!isReady ? (
-              <div className="h-9 w-28 animate-pulse rounded-lg bg-slate-100" />
+              <div className="h-9 w-28 animate-pulse rounded-lg bg-slate-100 dark:bg-white/10" />
             ) : user ? (
               <button
                 type="button"
@@ -61,7 +74,7 @@ export default function AppShell() {
                   await signOut()
                   navigate('/live')
                 }}
-                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50"
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
               >
                 <LogOut className="h-4 w-4" />
                 Sign out
@@ -69,7 +82,7 @@ export default function AppShell() {
             ) : (
               <Link
                 to="/login"
-                className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+                className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100"
               >
                 <LogIn className="h-4 w-4" />
                 Sign in
