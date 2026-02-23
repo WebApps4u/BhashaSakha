@@ -1,8 +1,54 @@
 import { Router, type Request, type Response } from 'express'
+import { createClient } from '@supabase/supabase-js'
 
 const router = Router()
 
 const getGoogleApiKey = () => process.env.GOOGLE_API_KEY ?? ''
+const getSupabaseUrl = () => process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? ''
+const getSupabaseAnonKey = () => process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY ?? ''
+const getSupabaseServiceRoleKey = () => process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
+
+const parseBearer = (req: Request) => {
+  const auth = req.header('authorization') ?? ''
+  return auth.startsWith('Bearer ') ? auth.slice('Bearer '.length).trim() : ''
+}
+
+const verifyUser = async (req: Request) => {
+  const SUPABASE_URL = getSupabaseUrl()
+  const SUPABASE_ANON_KEY = getSupabaseAnonKey()
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return { ok: false as const, status: 500, error: 'Supabase is not configured on the server' }
+
+  const token = parseBearer(req)
+  if (!token) return { ok: false as const, status: 401, error: 'Unauthorized' }
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
+  const { data, error } = await supabase.auth.getUser(token)
+  if (error || !data.user) return { ok: false as const, status: 401, error: 'Unauthorized' }
+  return { ok: true as const, userId: data.user.id, token }
+}
+
+const adminClient = () => {
+  const SUPABASE_URL = getSupabaseUrl()
+  const key = getSupabaseServiceRoleKey()
+  if (!SUPABASE_URL || !key) return null
+  return createClient(SUPABASE_URL, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
+}
+
+const isAdmin = async (userId: string) => {
+  const supabase = adminClient()
+  if (!supabase) return false
+  const { data: links, error } = await supabase.from('admin_user_roles').select('role_id').eq('user_id', userId)
+  if (error) return false
+  const roleIds = (links ?? []).map((r: any) => r.role_id).filter(Boolean)
+  if (!roleIds.length) return false
+  const { data: roles } = await supabase.from('admin_roles').select('key').in('id', roleIds)
+  const keys = (roles ?? []).map((r: any) => r.key).filter(Boolean)
+  return keys.includes('admin') || keys.includes('super_admin')
+}
 
 const generateOnce = async ({ apiKey, model, text }: { apiKey: string; model: string; text: string }) => {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`
@@ -22,7 +68,15 @@ const generateOnce = async ({ apiKey, model, text }: { apiKey: string; model: st
 }
 
 router.get('/models', async (req: Request, res: Response): Promise<void> => {
-  void req
+  const v = await verifyUser(req)
+  if (!v.ok) {
+    res.status(v.status).json({ success: false, error: v.error })
+    return
+  }
+  if (!(await isAdmin(v.userId))) {
+    res.status(403).json({ success: false, error: 'Forbidden' })
+    return
+  }
   const GOOGLE_API_KEY = getGoogleApiKey()
   if (!GOOGLE_API_KEY) {
     res.status(500).json({ success: false, error: 'Missing GOOGLE_API_KEY on the server.' })
@@ -75,6 +129,15 @@ router.get('/models', async (req: Request, res: Response): Promise<void> => {
 })
 
 router.post('/test', async (req: Request, res: Response): Promise<void> => {
+  const v = await verifyUser(req)
+  if (!v.ok) {
+    res.status(v.status).json({ success: false, error: v.error })
+    return
+  }
+  if (!(await isAdmin(v.userId))) {
+    res.status(403).json({ success: false, error: 'Forbidden' })
+    return
+  }
   const GOOGLE_API_KEY = getGoogleApiKey()
   if (!GOOGLE_API_KEY) {
     res.status(500).json({ success: false, error: 'Missing GOOGLE_API_KEY on the server.' })

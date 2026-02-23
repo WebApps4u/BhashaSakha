@@ -28,6 +28,7 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
   void req
   const configuredModel = process.env.GEMINI_MODEL_TRANSLATE ?? 'gemini-2.0-flash'
   const googleKey = process.env.GOOGLE_API_KEY
+  const enableDiagnostics = (process.env.ENABLE_GEMINI_DIAGNOSTICS ?? '').toLowerCase() === 'true' || process.env.NODE_ENV !== 'production'
 
   const payload: any = {
     success: true,
@@ -41,14 +42,14 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
     },
   }
 
-  if (googleKey) {
+  if (googleKey && enableDiagnostics) {
     const listed = await listGenerateContentModels(googleKey)
     if (!listed.ok) {
       payload.gemini_diagnostics = { ok: false, details: listed.bodyText.slice(0, 500) }
     } else {
       payload.gemini_diagnostics = {
         ok: true,
-        model_ok: listed.models.includes(configuredModel),
+        model_ok: listed.models.some((m) => m === configuredModel || m.startsWith(`${configuredModel}-`)),
         sample_models: listed.models.slice(0, 8),
       }
     }

@@ -11,6 +11,7 @@ import express, {
 } from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
+import crypto from 'crypto'
 import authRoutes from './routes/auth.js'
 import translateRoutes from './routes/translate.js'
 import configRoutes from './routes/config.js'
@@ -23,7 +24,26 @@ dotenv.config()
 
 const app: express.Application = express()
 
-app.use(cors())
+const corsOrigins = (process.env.CORS_ORIGIN ?? '').split(',').map((s) => s.trim()).filter(Boolean)
+app.use(
+  cors({
+    origin: corsOrigins.length ? corsOrigins : '*',
+    credentials: false,
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-bootstrap-token', 'x-request-id'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  }),
+)
+
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const requestId = req.header('x-request-id') ?? crypto.randomUUID()
+  res.setHeader('x-request-id', requestId)
+  ;(res.locals as any).requestId = requestId
+
+  res.setHeader('x-content-type-options', 'nosniff')
+  res.setHeader('referrer-policy', 'no-referrer')
+  res.setHeader('x-frame-options', 'DENY')
+  next()
+})
 app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 
@@ -56,6 +76,12 @@ app.use(
 app.use((error: Error, req: Request, res: Response, next: NextFunction) => {
   void req
   void next
+  try {
+    const requestId = (res.locals as any).requestId
+    console.error('api_error', { requestId, message: error.message })
+  } catch {
+    console.error('api_error', error.message)
+  }
   res.status(500).json({
     success: false,
     error: 'Server internal error',

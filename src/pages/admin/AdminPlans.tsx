@@ -8,6 +8,8 @@ type Plan = {
   name: string
   monthly_request_limit: number
   monthly_char_limit: number
+  per_request_char_limit: number
+  max_targets: number
   is_active: boolean
   created_at?: string
 }
@@ -28,6 +30,8 @@ export default function AdminPlans() {
     name: 'Starter',
     monthly_request_limit: 200,
     monthly_char_limit: 100000,
+    per_request_char_limit: 5000,
+    max_targets: 5,
     is_active: true,
   })
 
@@ -95,7 +99,7 @@ export default function AdminPlans() {
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="text-sm font-semibold">Create or update a plan</div>
-        <div className="mt-3 grid gap-3 md:grid-cols-5">
+        <div className="mt-3 grid gap-3 md:grid-cols-7">
           <input
             value={draft.code}
             onChange={(e) => setDraft((p) => ({ ...p, code: e.target.value }))}
@@ -119,6 +123,18 @@ export default function AdminPlans() {
             onChange={(e) => setDraft((p) => ({ ...p, monthly_char_limit: toInt(e.target.value) }))}
             className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
             placeholder="chars"
+          />
+          <input
+            value={draft.per_request_char_limit}
+            onChange={(e) => setDraft((p) => ({ ...p, per_request_char_limit: toInt(e.target.value) }))}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+            placeholder="per-request chars"
+          />
+          <input
+            value={draft.max_targets}
+            onChange={(e) => setDraft((p) => ({ ...p, max_targets: toInt(e.target.value) }))}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+            placeholder="max targets"
           />
         </div>
         <div className="mt-3 flex items-center justify-between">
@@ -160,20 +176,24 @@ export default function AdminPlans() {
           </div>
         ) : (
           <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
-            <div className="grid grid-cols-[1fr_2fr_1fr_1fr_1fr] gap-3 bg-slate-50 px-4 py-2 text-xs font-semibold text-slate-600">
+            <div className="grid grid-cols-[1fr_2fr_1fr_1fr_1fr_1fr_1fr] gap-3 bg-slate-50 px-4 py-2 text-xs font-semibold text-slate-600">
               <div>Code</div>
               <div>Name</div>
               <div>Requests</div>
               <div>Chars</div>
+              <div>Per-request</div>
+              <div>Targets</div>
               <div className="text-right">Action</div>
             </div>
             <div className="divide-y divide-slate-200">
               {plans.map((p) => (
-                <div key={p.code} className="grid grid-cols-[1fr_2fr_1fr_1fr_1fr] gap-3 px-4 py-3 text-sm">
+                <div key={p.code} className="grid grid-cols-[1fr_2fr_1fr_1fr_1fr_1fr_1fr] gap-3 px-4 py-3 text-sm">
                   <div className="font-medium text-slate-900">{p.code}</div>
                   <div className="text-slate-700">{p.name}</div>
                   <div className="text-slate-700">{p.monthly_request_limit === 0 ? 'Unlimited' : p.monthly_request_limit}</div>
                   <div className="text-slate-700">{p.monthly_char_limit === 0 ? 'Unlimited' : p.monthly_char_limit}</div>
+                  <div className="text-slate-700">{p.per_request_char_limit === 0 ? 'Unlimited' : p.per_request_char_limit}</div>
+                  <div className="text-slate-700">{p.max_targets === 0 ? 'Unlimited' : p.max_targets}</div>
                   <div className="flex justify-end">
                     <button
                       type="button"

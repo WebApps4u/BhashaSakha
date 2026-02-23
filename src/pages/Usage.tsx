@@ -22,6 +22,8 @@ type UsageMe = {
     name: string
     monthly_request_limit: number
     monthly_char_limit: number
+    per_request_char_limit: number
+    max_targets: number
     effective_from: string | null
   }
   usage: {
@@ -179,6 +181,10 @@ export default function Usage() {
 
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
               Resets at: {me?.reset_at ? new Date(me.reset_at).toLocaleString() : '—'}
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+              Per-request limit: {me?.plan.per_request_char_limit ? `${me.plan.per_request_char_limit} chars` : 'Unlimited'}; Max targets: {me?.plan.max_targets ? me.plan.max_targets : 'Unlimited'}
             </div>
           </div>
         </div>

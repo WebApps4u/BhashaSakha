@@ -19,6 +19,9 @@ const getSupabaseUrl = () => process.env.SUPABASE_URL ?? process.env.VITE_SUPABA
 const getSupabaseAnonKey = () => process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY ?? ''
 const getSupabaseServiceRoleKey = () => process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
 
+const MAX_TARGETS_ABSOLUTE = 20
+const MAX_TEXT_ABSOLUTE = 20000
+
 const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((v) => typeof v === 'string')
 
@@ -28,7 +31,7 @@ const parseBody = (body: TranslateRequestBody) => {
     ? body.targets.map((t) => t.trim()).filter(Boolean)
     : []
 
-  return { text, targets }
+  return { text, targets: Array.from(new Set(targets)) }
 }
 
 const modelFallbacks = (model: string) => {
@@ -155,7 +158,7 @@ const monthKeyUtc = (d = new Date()) => {
 const verifyUser = async (req: Request) => {
   const SUPABASE_URL = getSupabaseUrl()
   const SUPABASE_ANON_KEY = getSupabaseAnonKey()
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return { ok: true as const, userId: null as string | null, token: '' }
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return { ok: false as const, status: 500, error: 'Supabase is not configured on the server' }
   const token = parseBearer(req)
   if (!token) return { ok: false as const, status: 401, error: 'Unauthorized' }
 
@@ -175,6 +178,102 @@ const serviceClient = () => {
   return createClient(SUPABASE_URL, key, {
     auth: { persistSession: false, autoRefreshToken: false },
   })
+}
+
+const nowMs = () => Date.now()
+
+type Bucket = { tokens: number; updatedAt: number }
+const bucketsByUser = new Map<string, Bucket>()
+
+type Entitlement = {
+  planCode: string
+  plan: {
+    code: string
+    name: string
+    monthly_request_limit: number
+    monthly_char_limit: number
+    per_request_char_limit: number
+    max_targets: number
+  }
+  requestLimit: number
+  charLimit: number
+  perReqCharLimit: number
+  maxTargets: number
+}
+
+const entitlements = new Map<string, { at: number; value: Entitlement }>()
+const ENT_TTL_MS = 30_000
+
+const getEntitlement = async (supabaseAdmin: ReturnType<typeof serviceClient>, userId: string): Promise<Entitlement> => {
+  if (entitlements.size > 5000) entitlements.clear()
+  const cached = entitlements.get(userId)
+  const t = nowMs()
+  if (cached && t - cached.at < ENT_TTL_MS) return cached.value
+
+  if (!supabaseAdmin) {
+    const fallback: Entitlement = {
+      planCode: 'free',
+      plan: { code: 'free', name: 'Free', monthly_request_limit: 0, monthly_char_limit: 0, per_request_char_limit: 0, max_targets: 0 },
+      requestLimit: 0,
+      charLimit: 0,
+      perReqCharLimit: 0,
+      maxTargets: 0,
+    }
+    entitlements.set(userId, { at: t, value: fallback })
+    return fallback
+  }
+
+  const { data: sub } = await supabaseAdmin
+    .from('user_subscriptions')
+    .select('plan_code,effective_from,override_monthly_request_limit,override_monthly_char_limit,override_per_request_char_limit,override_max_targets,created_at')
+    .eq('user_id', userId)
+    .order('effective_from', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const planCode = (sub as any)?.plan_code ?? 'free'
+  const { data: planRow } = await supabaseAdmin
+    .from('subscription_plans')
+    .select('code,name,monthly_request_limit,monthly_char_limit,per_request_char_limit,max_targets,is_active')
+    .eq('code', planCode)
+    .maybeSingle()
+
+  const requestLimit = Number((sub as any)?.override_monthly_request_limit ?? (planRow as any)?.monthly_request_limit ?? 0)
+  const charLimit = Number((sub as any)?.override_monthly_char_limit ?? (planRow as any)?.monthly_char_limit ?? 0)
+  const perReqCharLimit = Number((sub as any)?.override_per_request_char_limit ?? (planRow as any)?.per_request_char_limit ?? 0)
+  const maxTargets = Number((sub as any)?.override_max_targets ?? (planRow as any)?.max_targets ?? 0)
+
+  const ent: Entitlement = {
+    planCode: (planRow as any)?.code ?? planCode,
+    plan: {
+      code: (planRow as any)?.code ?? planCode,
+      name: (planRow as any)?.name ?? planCode,
+      monthly_request_limit: requestLimit,
+      monthly_char_limit: charLimit,
+      per_request_char_limit: perReqCharLimit,
+      max_targets: maxTargets,
+    },
+    requestLimit,
+    charLimit,
+    perReqCharLimit,
+    maxTargets,
+  }
+
+  entitlements.set(userId, { at: t, value: ent })
+  return ent
+}
+
+const takeTokens = ({ key, refillPerMin, burst, cost }: { key: string; refillPerMin: number; burst: number; cost: number }) => {
+  if (bucketsByUser.size > 5000) bucketsByUser.clear()
+  const t = nowMs()
+  const prev = bucketsByUser.get(key) ?? { tokens: burst, updatedAt: t }
+  const elapsedMin = Math.max(0, (t - prev.updatedAt) / 60000)
+  const nextTokens = Math.min(burst, prev.tokens + elapsedMin * refillPerMin)
+  const ok = nextTokens >= cost
+  const next: Bucket = { tokens: ok ? nextTokens - cost : nextTokens, updatedAt: t }
+  bucketsByUser.set(key, next)
+  return { ok, remaining: Math.floor(next.tokens) }
 }
 
 router.post('/', async (req: Request, res: Response): Promise<void> => {
@@ -201,8 +300,16 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
       res.status(400).json({ success: false, error: 'text is required' })
       return
     }
+    if (text.length > MAX_TEXT_ABSOLUTE) {
+      res.status(413).json({ success: false, error: `text is too long (max ${MAX_TEXT_ABSOLUTE} chars)` })
+      return
+    }
     if (targets.length === 0) {
       res.status(400).json({ success: false, error: 'targets[] is required' })
+      return
+    }
+    if (targets.length > MAX_TARGETS_ABSOLUTE) {
+      res.status(400).json({ success: false, error: `Too many targets (max ${MAX_TARGETS_ABSOLUTE})` })
       return
     }
 
@@ -210,24 +317,29 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
     const sourceChars = text.length
     const supabaseAdmin = serviceClient()
 
-    if (supabaseAdmin && v.userId) {
-      const { data: sub } = await supabaseAdmin
-        .from('user_subscriptions')
-        .select('plan_code,effective_from,override_monthly_request_limit,override_monthly_char_limit,created_at')
-        .eq('user_id', v.userId)
-        .order('effective_from', { ascending: false })
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-      const planCode = (sub as any)?.plan_code ?? 'free'
-      const { data: planRow } = await supabaseAdmin
-        .from('subscription_plans')
-        .select('code,name,monthly_request_limit,monthly_char_limit,is_active')
-        .eq('code', planCode)
-        .maybeSingle()
+    if (v.userId) {
+      const rl = takeTokens({ key: v.userId, refillPerMin: 30, burst: 60, cost: 1 })
+      if (!rl.ok) {
+        res.status(429).json({ success: false, error: 'Too many requests. Please wait a moment.' })
+        return
+      }
+    }
 
-      const requestLimit = Number((sub as any)?.override_monthly_request_limit ?? (planRow as any)?.monthly_request_limit ?? 0)
-      const charLimit = Number((sub as any)?.override_monthly_char_limit ?? (planRow as any)?.monthly_char_limit ?? 0)
+    if (supabaseAdmin && v.userId) {
+      const ent = await getEntitlement(supabaseAdmin, v.userId)
+      const requestLimit = ent.requestLimit
+      const charLimit = ent.charLimit
+      const perReqCharLimit = ent.perReqCharLimit
+      const maxTargets = ent.maxTargets
+
+      if (perReqCharLimit > 0 && sourceChars > perReqCharLimit) {
+        res.status(413).json({ success: false, error: 'Request too large for your plan', code: 'request_too_large', limit: perReqCharLimit })
+        return
+      }
+      if (maxTargets > 0 && targets.length > maxTargets) {
+        res.status(400).json({ success: false, error: 'Too many target languages for your plan', code: 'too_many_targets', limit: maxTargets })
+        return
+      }
 
       const { data: usageRow } = await supabaseAdmin
         .from('usage_months')
@@ -258,10 +370,7 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
           code: 'quota_exceeded',
           month,
           plan: {
-            code: (planRow as any)?.code ?? planCode,
-            name: (planRow as any)?.name ?? planCode,
-            monthly_request_limit: requestLimit,
-            monthly_char_limit: charLimit,
+            ...ent.plan,
           },
           usage: { requests_used: requestsUsed, chars_used: charsUsed },
           remaining: {

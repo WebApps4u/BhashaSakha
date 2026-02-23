@@ -16,6 +16,8 @@ type UsageRow = {
   effective_from: string | null
   override_monthly_request_limit: number | null
   override_monthly_char_limit: number | null
+  override_per_request_char_limit: number | null
+  override_max_targets: number | null
 }
 
 type Plan = {
@@ -106,6 +108,8 @@ export default function AdminUsage() {
         effective_from: selected.effective_from || null,
         override_monthly_request_limit: selected.override_monthly_request_limit,
         override_monthly_char_limit: selected.override_monthly_char_limit,
+        override_per_request_char_limit: selected.override_per_request_char_limit,
+        override_max_targets: selected.override_max_targets,
         reset_current_month: resetCurrentMonth,
       })
       await load()

@@ -578,7 +578,7 @@ router.get('/subscriptions/plans', async (req: Request, res: Response): Promise<
     const supabase = getSupabaseServiceRoleKey() ? adminClient() : userClient(v.token)
     const { data, error } = await supabase
       .from('subscription_plans')
-      .select('code,name,monthly_request_limit,monthly_char_limit,is_active,created_at')
+      .select('code,name,monthly_request_limit,monthly_char_limit,per_request_char_limit,max_targets,is_active,created_at')
       .order('monthly_request_limit', { ascending: true })
     if (error) {
       jsonError(res, 500, error.message)
@@ -606,6 +606,8 @@ router.post('/subscriptions/plans', async (req: Request, res: Response): Promise
     const name = typeof req.body?.name === 'string' ? req.body.name.trim() : ''
     const reqLimit = Number(req.body?.monthly_request_limit ?? NaN)
     const charLimit = Number(req.body?.monthly_char_limit ?? NaN)
+    const perReqCharLimit = Number(req.body?.per_request_char_limit ?? NaN)
+    const maxTargets = Number(req.body?.max_targets ?? NaN)
     const isActive = typeof req.body?.is_active === 'boolean' ? req.body.is_active : true
 
     if (!code || !/^[a-z0-9_-]{2,32}$/.test(code)) {
@@ -624,11 +626,27 @@ router.post('/subscriptions/plans', async (req: Request, res: Response): Promise
       jsonError(res, 400, 'monthly_char_limit is invalid')
       return
     }
+    if (!Number.isFinite(perReqCharLimit) || perReqCharLimit < 0 || perReqCharLimit > 200000) {
+      jsonError(res, 400, 'per_request_char_limit is invalid')
+      return
+    }
+    if (!Number.isFinite(maxTargets) || maxTargets < 0 || maxTargets > 50) {
+      jsonError(res, 400, 'max_targets is invalid')
+      return
+    }
 
     const supabase = adminClient()
     const { error } = await supabase
       .from('subscription_plans')
-      .upsert({ code, name, monthly_request_limit: Math.trunc(reqLimit), monthly_char_limit: Math.trunc(charLimit), is_active: isActive })
+      .upsert({
+        code,
+        name,
+        monthly_request_limit: Math.trunc(reqLimit),
+        monthly_char_limit: Math.trunc(charLimit),
+        per_request_char_limit: Math.trunc(perReqCharLimit),
+        max_targets: Math.trunc(maxTargets),
+        is_active: isActive,
+      })
     if (error) {
       jsonError(res, 500, error.message)
       return
@@ -639,7 +657,15 @@ router.post('/subscriptions/plans', async (req: Request, res: Response): Promise
       action: 'subscriptions.plan.upsert',
       target_type: 'subscription_plans',
       target_id: code,
-      details: { code, name, monthly_request_limit: Math.trunc(reqLimit), monthly_char_limit: Math.trunc(charLimit), is_active: isActive },
+      details: {
+        code,
+        name,
+        monthly_request_limit: Math.trunc(reqLimit),
+        monthly_char_limit: Math.trunc(charLimit),
+        per_request_char_limit: Math.trunc(perReqCharLimit),
+        max_targets: Math.trunc(maxTargets),
+        is_active: isActive,
+      },
     })
 
     res.status(200).json({ success: true })
@@ -673,7 +699,9 @@ router.get('/subscriptions/users/:userId', async (req: Request, res: Response): 
 
     const { data: sub } = await supabase
       .from('user_subscriptions')
-      .select('plan_code,effective_from,override_monthly_request_limit,override_monthly_char_limit,created_at')
+      .select(
+        'plan_code,effective_from,override_monthly_request_limit,override_monthly_char_limit,override_per_request_char_limit,override_max_targets,created_at',
+      )
       .eq('user_id', userId)
       .order('effective_from', { ascending: false })
       .order('created_at', { ascending: false })
@@ -715,6 +743,8 @@ router.post('/subscriptions/users/:userId', async (req: Request, res: Response):
     const effectiveFrom = typeof req.body?.effective_from === 'string' ? req.body.effective_from.trim() : ''
     const overrideReq = req.body?.override_monthly_request_limit
     const overrideChars = req.body?.override_monthly_char_limit
+    const overridePerReqChars = req.body?.override_per_request_char_limit
+    const overrideMaxTargets = req.body?.override_max_targets
     const resetCurrentMonth = !!req.body?.reset_current_month
 
     if (!planCode) {
@@ -731,12 +761,22 @@ router.post('/subscriptions/users/:userId', async (req: Request, res: Response):
 
     const cleanOverrideReq = overrideReq == null || overrideReq === '' ? null : Math.trunc(Number(overrideReq))
     const cleanOverrideChars = overrideChars == null || overrideChars === '' ? null : Math.trunc(Number(overrideChars))
+    const cleanOverridePerReqChars = overridePerReqChars == null || overridePerReqChars === '' ? null : Math.trunc(Number(overridePerReqChars))
+    const cleanOverrideMaxTargets = overrideMaxTargets == null || overrideMaxTargets === '' ? null : Math.trunc(Number(overrideMaxTargets))
     if (cleanOverrideReq != null && (!Number.isFinite(cleanOverrideReq) || cleanOverrideReq < 0 || cleanOverrideReq > 1000000)) {
       jsonError(res, 400, 'override_monthly_request_limit is invalid')
       return
     }
     if (cleanOverrideChars != null && (!Number.isFinite(cleanOverrideChars) || cleanOverrideChars < 0 || cleanOverrideChars > 1000000000)) {
       jsonError(res, 400, 'override_monthly_char_limit is invalid')
+      return
+    }
+    if (cleanOverridePerReqChars != null && (!Number.isFinite(cleanOverridePerReqChars) || cleanOverridePerReqChars < 0 || cleanOverridePerReqChars > 200000)) {
+      jsonError(res, 400, 'override_per_request_char_limit is invalid')
+      return
+    }
+    if (cleanOverrideMaxTargets != null && (!Number.isFinite(cleanOverrideMaxTargets) || cleanOverrideMaxTargets < 0 || cleanOverrideMaxTargets > 50)) {
+      jsonError(res, 400, 'override_max_targets is invalid')
       return
     }
 
@@ -748,6 +788,8 @@ router.post('/subscriptions/users/:userId', async (req: Request, res: Response):
       effective_from: effDate,
       override_monthly_request_limit: cleanOverrideReq,
       override_monthly_char_limit: cleanOverrideChars,
+      override_per_request_char_limit: cleanOverridePerReqChars,
+      override_max_targets: cleanOverrideMaxTargets,
     })
     if (insertErr) {
       jsonError(res, 500, insertErr.message)
@@ -770,6 +812,8 @@ router.post('/subscriptions/users/:userId', async (req: Request, res: Response):
         effective_from: effDate,
         override_monthly_request_limit: cleanOverrideReq,
         override_monthly_char_limit: cleanOverrideChars,
+        override_per_request_char_limit: cleanOverridePerReqChars,
+        override_max_targets: cleanOverrideMaxTargets,
         reset_current_month: resetCurrentMonth,
       },
     })
@@ -819,7 +863,9 @@ router.get('/subscriptions/usage', async (req: Request, res: Response): Promise<
     const { data: subs } = ids.length
       ? await supabase
           .from('user_subscriptions')
-          .select('user_id,plan_code,effective_from,override_monthly_request_limit,override_monthly_char_limit,created_at')
+          .select(
+            'user_id,plan_code,effective_from,override_monthly_request_limit,override_monthly_char_limit,override_per_request_char_limit,override_max_targets,created_at',
+          )
           .in('user_id', ids)
           .order('effective_from', { ascending: false })
           .order('created_at', { ascending: false })
@@ -846,6 +892,8 @@ router.get('/subscriptions/usage', async (req: Request, res: Response): Promise<
         effective_from: s?.effective_from ?? null,
         override_monthly_request_limit: s?.override_monthly_request_limit ?? null,
         override_monthly_char_limit: s?.override_monthly_char_limit ?? null,
+        override_per_request_char_limit: s?.override_per_request_char_limit ?? null,
+        override_max_targets: s?.override_max_targets ?? null,
       }
     })
 

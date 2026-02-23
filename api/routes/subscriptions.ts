@@ -79,7 +79,7 @@ router.get('/plans', async (_req: Request, res: Response): Promise<void> => {
     const supabase = anonClient()
     const { data, error } = await supabase
       .from('subscription_plans')
-      .select('code,name,monthly_request_limit,monthly_char_limit,is_active')
+      .select('code,name,monthly_request_limit,monthly_char_limit,per_request_char_limit,max_targets,is_active')
       .eq('is_active', true)
       .order('monthly_request_limit', { ascending: true })
     if (error) {
@@ -105,7 +105,9 @@ router.get('/me', async (req: Request, res: Response): Promise<void> => {
 
     const { data: sub } = await supabase
       .from('user_subscriptions')
-      .select('plan_code,effective_from,override_monthly_request_limit,override_monthly_char_limit,created_at')
+      .select(
+        'plan_code,effective_from,override_monthly_request_limit,override_monthly_char_limit,override_per_request_char_limit,override_max_targets,created_at',
+      )
       .eq('user_id', v.userId)
       .order('effective_from', { ascending: false })
       .order('created_at', { ascending: false })
@@ -116,7 +118,7 @@ router.get('/me', async (req: Request, res: Response): Promise<void> => {
 
     const { data: planRow } = await supabase
       .from('subscription_plans')
-      .select('code,name,monthly_request_limit,monthly_char_limit,is_active')
+      .select('code,name,monthly_request_limit,monthly_char_limit,per_request_char_limit,max_targets,is_active')
       .eq('code', planCode)
       .maybeSingle()
 
@@ -125,6 +127,8 @@ router.get('/me', async (req: Request, res: Response): Promise<void> => {
       name: (planRow as any)?.name ?? planCode,
       monthly_request_limit: (sub as any)?.override_monthly_request_limit ?? (planRow as any)?.monthly_request_limit ?? 0,
       monthly_char_limit: (sub as any)?.override_monthly_char_limit ?? (planRow as any)?.monthly_char_limit ?? 0,
+      per_request_char_limit: (sub as any)?.override_per_request_char_limit ?? (planRow as any)?.per_request_char_limit ?? 0,
+      max_targets: (sub as any)?.override_max_targets ?? (planRow as any)?.max_targets ?? 0,
       effective_from: (sub as any)?.effective_from ?? null,
     }
 
@@ -158,4 +162,3 @@ router.get('/me', async (req: Request, res: Response): Promise<void> => {
 })
 
 export default router
-

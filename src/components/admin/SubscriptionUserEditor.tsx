@@ -13,6 +13,8 @@ type SubscriptionEditable = {
   effective_from: string | null
   override_monthly_request_limit: number | null
   override_monthly_char_limit: number | null
+  override_per_request_char_limit: number | null
+  override_max_targets: number | null
 }
 
 export default function SubscriptionUserEditor<T extends SubscriptionEditable>({
@@ -90,6 +92,32 @@ export default function SubscriptionUserEditor<T extends SubscriptionEditable>({
             }}
             className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
             placeholder="e.g. 250000"
+          />
+        </label>
+
+        <label className="block">
+          <span className="text-xs text-slate-600">Override per-request chars (optional)</span>
+          <input
+            value={value.override_per_request_char_limit ?? ''}
+            onChange={(e) => {
+              const v = e.target.value.trim()
+              onChange({ ...value, override_per_request_char_limit: v ? Number(v) : null })
+            }}
+            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+            placeholder="e.g. 5000"
+          />
+        </label>
+
+        <label className="block">
+          <span className="text-xs text-slate-600">Override max targets (optional)</span>
+          <input
+            value={value.override_max_targets ?? ''}
+            onChange={(e) => {
+              const v = e.target.value.trim()
+              onChange({ ...value, override_max_targets: v ? Number(v) : null })
+            }}
+            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+            placeholder="e.g. 5"
           />
         </label>
       </div>
