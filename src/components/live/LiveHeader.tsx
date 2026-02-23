@@ -1,6 +1,7 @@
 import { ArrowLeftRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { LANGUAGES } from '@/utils/languages'
+import { useTranslation } from 'react-i18next'
 
 export type LiveMode = 'transcribe' | 'translate' | 'dubbing'
 
@@ -87,11 +88,12 @@ export default function LiveHeader({
   editorHref: string | null
   isSignedIn: boolean
 }) {
+  const { t } = useTranslation()
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
       <div className="text-center">
-        <h1 className="text-3xl font-semibold tracking-tight">Live Transcription</h1>
-        <div className="mt-2 text-sm text-slate-600 dark:text-slate-300">Generate translated captions and audio in real-time.</div>
+        <h1 className="text-3xl font-semibold tracking-tight">{t('live.title')}</h1>
+        <div className="mt-2 text-sm text-slate-600 dark:text-slate-300">{t('live.subtitle')}</div>
       </div>
 
       <div className="mt-8 flex justify-center">
@@ -106,7 +108,7 @@ export default function LiveHeader({
                 : 'text-slate-600 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-white/10')
             }
           >
-            Private
+            {t('live.private')}
           </button>
           <button
             type="button"
@@ -118,16 +120,16 @@ export default function LiveHeader({
                 : 'text-slate-600 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-white/10')
             }
           >
-            Shareable
+            {t('live.shareable')}
           </button>
         </div>
       </div>
 
       <div className="mt-6 flex justify-center gap-3">
-        <Pill active={mode === 'transcribe'} onClick={() => onMode('transcribe')}>Transcribe</Pill>
-        <Pill active={mode === 'translate'} onClick={() => onMode('translate')}>Translate</Pill>
+        <Pill active={mode === 'transcribe'} onClick={() => onMode('transcribe')}>{t('live.transcribe')}</Pill>
+        <Pill active={mode === 'translate'} onClick={() => onMode('translate')}>{t('live.translate')}</Pill>
         <Pill active={mode === 'dubbing'} onClick={() => onMode('dubbing')} disabled>
-          Dubbing
+          {t('live.dubbing')}
         </Pill>
       </div>
 
@@ -147,9 +149,9 @@ export default function LiveHeader({
 
       <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm dark:border-white/10 dark:bg-white/5">
         <div className="min-w-0">
-          <div className="text-sm font-medium text-slate-900 dark:text-slate-50">Press and start talking</div>
+          <div className="text-sm font-medium text-slate-900 dark:text-slate-50">{t('live.pressAndTalk')}</div>
           <div className="mt-1 text-xs text-slate-500 dark:text-slate-300">
-            {isSignedIn ? 'Captions appear immediately. Translation appears per finalized phrase.' : 'Sign in is required to start capture.'}
+            {isSignedIn ? t('live.signedInHint') : t('live.signedOutHint')}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -159,14 +161,14 @@ export default function LiveHeader({
             disabled={!canShare}
             className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
           >
-            Share
+            {t('live.share')}
           </button>
           {editorHref ? (
             <Link
               to={editorHref}
               className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100"
             >
-              Open editor
+              {t('live.openEditor')}
             </Link>
           ) : null}
         </div>

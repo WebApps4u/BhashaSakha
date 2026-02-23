@@ -1,9 +1,11 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, LogIn, LogOut, Mic2, Moon, Settings, Sun } from 'lucide-react'
-import { useEffect } from 'react'
+import { LayoutDashboard, LogIn, LogOut, Mic2, Moon, Settings, Sun, Gauge } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/authStore'
 import { useTheme } from '@/hooks/useTheme'
+import { useTranslation } from 'react-i18next'
+import { useLoadingStore } from '@/store/loadingStore'
 
 import type { ComponentType } from 'react'
 
@@ -28,19 +30,34 @@ function NavLink({ to, label, icon: Icon }: { to: string; label: string; icon: C
 }
 
 export default function AppShell() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const location = useLocation()
   const { init, isReady, user, signOut } = useAuthStore()
   const { theme, toggle } = useTheme()
+  const pending = useLoadingStore((s) => s.pending)
+  const [routeLoading, setRouteLoading] = useState(false)
 
   useEffect(() => {
     void init()
   }, [init])
 
+  useEffect(() => {
+    setRouteLoading(true)
+    const t = setTimeout(() => setRouteLoading(false), 350)
+    return () => clearTimeout(t)
+  }, [location.pathname, location.search])
+
   const isFullBleed = location.pathname.startsWith('/live') || location.pathname.startsWith('/s/')
 
   return (
     <div className="min-h-screen bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-50">
+      <div
+        className={cn(
+          'fixed left-0 top-0 z-50 h-0.5 w-full bg-indigo-500 transition-opacity',
+          pending > 0 || routeLoading ? 'opacity-100' : 'opacity-0',
+        )}
+      />
       <header className="border-b border-slate-200 bg-white/80 backdrop-blur dark:border-white/10 dark:bg-slate-950/80">
         <div className={cn('mx-auto flex items-center justify-between px-4', isFullBleed ? 'max-w-6xl py-3' : 'max-w-6xl py-3')}>
           <div className="flex items-center gap-3">
@@ -49,9 +66,10 @@ export default function AppShell() {
               BhashaSakha
             </Link>
             <div className="hidden items-center gap-1 sm:flex">
-              <NavLink to="/live" label="Live" icon={Mic2} />
-              {user ? <NavLink to="/dashboard" label="Dashboard" icon={LayoutDashboard} /> : null}
-              {user ? <NavLink to="/account" label="Account" icon={Settings} /> : null}
+              <NavLink to="/live" label={t('nav.live')} icon={Mic2} />
+              {user ? <NavLink to="/dashboard" label={t('nav.dashboard')} icon={LayoutDashboard} /> : null}
+              {user ? <NavLink to="/usage" label="Usage" icon={Gauge} /> : null}
+              {user ? <NavLink to="/account" label={t('nav.account')} icon={Settings} /> : null}
             </div>
           </div>
 
@@ -77,7 +95,7 @@ export default function AppShell() {
                 className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
               >
                 <LogOut className="h-4 w-4" />
-                Sign out
+                {t('auth.signOut')}
               </button>
             ) : (
               <Link
@@ -85,7 +103,7 @@ export default function AppShell() {
                 className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100"
               >
                 <LogIn className="h-4 w-4" />
-                Sign in
+                {t('auth.signIn')}
               </Link>
             )}
           </div>

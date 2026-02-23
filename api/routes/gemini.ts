@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from 'express'
 
 const router = Router()
 
-const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY
+const getGoogleApiKey = () => process.env.GOOGLE_API_KEY ?? ''
 
 const generateOnce = async ({ apiKey, model, text }: { apiKey: string; model: string; text: string }) => {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`
@@ -23,6 +23,7 @@ const generateOnce = async ({ apiKey, model, text }: { apiKey: string; model: st
 
 router.get('/models', async (req: Request, res: Response): Promise<void> => {
   void req
+  const GOOGLE_API_KEY = getGoogleApiKey()
   if (!GOOGLE_API_KEY) {
     res.status(500).json({ success: false, error: 'Missing GOOGLE_API_KEY on the server.' })
     return
@@ -74,6 +75,7 @@ router.get('/models', async (req: Request, res: Response): Promise<void> => {
 })
 
 router.post('/test', async (req: Request, res: Response): Promise<void> => {
+  const GOOGLE_API_KEY = getGoogleApiKey()
   if (!GOOGLE_API_KEY) {
     res.status(500).json({ success: false, error: 'Missing GOOGLE_API_KEY on the server.' })
     return

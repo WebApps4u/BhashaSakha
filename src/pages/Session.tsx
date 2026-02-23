@@ -7,6 +7,8 @@ import { buildTxt, buildVtt, downloadTextFile, type Segment } from '@/utils/expo
 import { useSpeechCaptions } from '@/hooks/useSpeechCaptions'
 import LiveTab from '@/components/session/LiveTab'
 import SessionHeader from '@/components/session/SessionHeader'
+import { useSettingsStore } from '@/store/settingsStore'
+import { speakTts } from '@/utils/tts'
 
 type SessionRow = {
   id: string
@@ -55,6 +57,12 @@ export default function Session() {
   const [ttsEnabled, setTtsEnabled] = useState(false)
   const [ttsLang, setTtsLang] = useState('')
   const [translatingSegmentIds, setTranslatingSegmentIds] = useState<Record<string, true>>({})
+
+  const ttsVoiceUri = useSettingsStore((s) => s.ttsVoiceUri)
+  const ttsGender = useSettingsStore((s) => s.ttsGender)
+  const ttsRate = useSettingsStore((s) => s.ttsRate)
+  const ttsPitch = useSettingsStore((s) => s.ttsPitch)
+  const ttsVolume = useSettingsStore((s) => s.ttsVolume)
 
   const isOwner = useMemo(() => !!user && !!session && user.id === session.owner_id, [session, user])
   const shareUrl = useMemo(() => (session ? `${window.location.origin}/s/${session.id}` : ''), [session])
@@ -305,13 +313,15 @@ export default function Session() {
           if (ttsEnabled && ttsLang) {
             const speakText = rows.find((r) => r.target_lang === ttsLang)?.text
             if (speakText) {
-              const utter = new SpeechSynthesisUtterance(speakText)
-              utter.lang = ttsLang
-              const voices = window.speechSynthesis.getVoices()
-              const voice = voices.find((v) => v.lang?.toLowerCase().startsWith(ttsLang.toLowerCase()))
-              if (voice) utter.voice = voice
-              window.speechSynthesis.cancel()
-              window.speechSynthesis.speak(utter)
+              speakTts({
+                text: speakText,
+                lang: ttsLang,
+                voiceUri: ttsVoiceUri,
+                gender: ttsGender,
+                rate: ttsRate,
+                pitch: ttsPitch,
+                volume: ttsVolume,
+              })
             }
           }
         }

@@ -31,4 +31,10 @@ process.on('SIGINT', () => {
   });
 });
 
+process.once('SIGUSR2', () => {
+  server.close(() => {
+    process.kill(process.pid, 'SIGUSR2')
+  })
+})
+
 export default app;

@@ -4,6 +4,8 @@ import { supabase } from '@/lib/supabaseClient'
 import { useAuthStore } from '@/store/authStore'
 import { Plus, ArrowRight, Lock, Globe } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useTranslation } from 'react-i18next'
+import { useGlobalLoading } from '@/hooks/useGlobalLoading'
 
 type SessionRow = {
   id: string
@@ -16,8 +18,10 @@ type SessionRow = {
 }
 
 export default function Dashboard() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { user, isReady } = useAuthStore()
+  const { wrapFn } = useGlobalLoading()
   const [title, setTitle] = useState('')
   const [sessions, setSessions] = useState<SessionRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -50,11 +54,11 @@ export default function Dashboard() {
       setLoading(false)
     }
 
-    void load()
+    void wrapFn(load)
     return () => {
       mounted = false
     }
-  }, [isReady, navigate, user])
+  }, [isReady, navigate, user, wrapFn])
 
   if (!canLoad) {
     return <div className="h-24 animate-pulse rounded-2xl bg-slate-100 dark:bg-white/10" />
@@ -64,22 +68,22 @@ export default function Dashboard() {
     <div className="space-y-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Dashboard</h1>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Your saved live sessions.</p>
+          <h1 className="text-xl font-semibold tracking-tight">{t('dashboard.title')}</h1>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{t('dashboard.subtitle')}</p>
         </div>
         <Link
           to="/live"
           className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100"
         >
           <Plus className="h-4 w-4" />
-          New live session
+          {t('dashboard.newLiveSession')}
         </Link>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-1 dark:border-white/10 dark:bg-white/5">
-          <div className="text-sm font-semibold">Quick create</div>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Creates a private session owned by your account.</p>
+          <div className="text-sm font-semibold">{t('dashboard.quickCreate')}</div>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{t('dashboard.quickCreateHint')}</p>
 
           <form
             className="mt-4 space-y-3"
@@ -89,21 +93,22 @@ export default function Dashboard() {
               setBusy(true)
               setError(null)
               try {
-                const { data, error: err } = await supabase
-                  .from('sessions')
-                  .insert({
-                    owner_id: user.id,
-                    title: title.trim() || 'Untitled session',
-                    source_lang: 'auto',
-                    target_langs: ['en'],
-                    visibility: 'private',
-                    started_at: new Date().toISOString(),
-                  })
-                  .select('id')
-                  .single()
-
-                if (err) throw err
-                navigate(`/session/${data.id}`)
+                await wrapFn(async () => {
+                    const { data, error: err } = await supabase
+                      .from('sessions')
+                      .insert({
+                        owner_id: user.id,
+                        title: title.trim() || 'Untitled session',
+                        source_lang: 'auto',
+                        target_langs: ['en'],
+                        visibility: 'private',
+                        started_at: new Date().toISOString(),
+                      })
+                      .select('id')
+                      .single()
+                    if (err) throw err
+                    navigate(`/session/${data.id}`)
+                })
               } catch (err) {
                 setError(err instanceof Error ? err.message : 'Failed to create session')
               } finally {
@@ -112,7 +117,7 @@ export default function Dashboard() {
             }}
           >
             <label className="block">
-              <span className="text-xs text-slate-600 dark:text-slate-300">Title</span>
+              <span className="text-xs text-slate-600 dark:text-slate-300">{t('dashboard.sessionTitleLabel')}</span>
               <input
                 className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-300 dark:border-white/10 dark:bg-white/5 dark:text-slate-50"
                 value={title}
@@ -130,14 +135,14 @@ export default function Dashboard() {
               disabled={busy}
               className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-50 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100"
             >
-              <span>Create & open</span>
+              <span>{t('dashboard.createAndOpen')}</span>
               <ArrowRight className="h-4 w-4" />
             </button>
           </form>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-2 dark:border-white/10 dark:bg-white/5">
-          <h2 className="text-sm font-semibold">Recent sessions</h2>
+          <h2 className="text-sm font-semibold">{t('dashboard.recentSessions')}</h2>
           <div className="mt-3">
             {loading ? (
               <div className="space-y-2">
@@ -147,7 +152,7 @@ export default function Dashboard() {
               </div>
             ) : sessions.length === 0 ? (
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
-                No sessions yet.
+                {t('dashboard.noSessions')}
               </div>
             ) : (
               <div className="divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 dark:divide-white/10 dark:border-white/10">
@@ -162,7 +167,9 @@ export default function Dashboard() {
                       <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-300">
                         <span>{new Date(s.updated_at).toLocaleString()}</span>
                         <span className="text-slate-300 dark:text-white/20">•</span>
-                        <span className="truncate">source: {s.source_lang}</span>
+                        <span className="truncate">
+                          {t('dashboard.source')}: {s.source_lang}
+                        </span>
                       </div>
                     </div>
                     <div

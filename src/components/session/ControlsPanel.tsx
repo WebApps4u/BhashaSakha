@@ -1,6 +1,9 @@
 import { Copy, FileText, Globe, Mic, Pause, Play, Square, Subtitles, UploadCloud } from 'lucide-react'
 import LevelBar from '@/components/session/LevelBar'
 import { LANGUAGES, getLanguageLabel } from '@/utils/languages'
+import { useSpeechVoices } from '@/hooks/useSpeechVoices'
+import { useSettingsStore, type TtsGenderPreference } from '@/store/settingsStore'
+import { useTranslation } from 'react-i18next'
 
 type SpeechStatus = 'idle' | 'listening' | 'paused'
 
@@ -55,6 +58,19 @@ export default function ControlsPanel({
   onExportVtt: () => void
   onUploadVtt: () => void
 }) {
+  const { t } = useTranslation()
+  const { voices } = useSpeechVoices()
+  const ttsVoiceUri = useSettingsStore((s) => s.ttsVoiceUri)
+  const setTtsVoiceUri = useSettingsStore((s) => s.setTtsVoiceUri)
+  const ttsGender = useSettingsStore((s) => s.ttsGender)
+  const setTtsGender = useSettingsStore((s) => s.setTtsGender)
+  const ttsRate = useSettingsStore((s) => s.ttsRate)
+  const setTtsRate = useSettingsStore((s) => s.setTtsRate)
+  const ttsPitch = useSettingsStore((s) => s.ttsPitch)
+  const setTtsPitch = useSettingsStore((s) => s.setTtsPitch)
+  const ttsVolume = useSettingsStore((s) => s.ttsVolume)
+  const setTtsVolume = useSettingsStore((s) => s.setTtsVolume)
+
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
       <h2 className="text-sm font-semibold">Controls</h2>
@@ -152,7 +168,7 @@ export default function ControlsPanel({
 
           <div className="rounded-xl border border-slate-200 bg-white p-3">
             <label className="flex items-center justify-between gap-2 text-xs text-slate-700">
-              <span>Voice playback (TTS)</span>
+              <span>{t('settings.voicePlayback')}</span>
               <input
                 type="checkbox"
                 disabled={!isOwner}
@@ -175,6 +191,77 @@ export default function ControlsPanel({
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div className="mt-2 grid gap-2">
+              <select
+                disabled={!isOwner || !ttsEnabled}
+                value={ttsVoiceUri}
+                onChange={(e) => setTtsVoiceUri(e.target.value)}
+                className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 disabled:opacity-50"
+              >
+                <option value="">Auto voice</option>
+                {voices
+                  .filter((v) => {
+                    if (!ttsLang) return true
+                    return (v.lang ?? '').toLowerCase().startsWith(ttsLang.toLowerCase())
+                  })
+                  .map((v) => (
+                    <option key={v.voiceURI} value={v.voiceURI}>
+                      {v.name} ({v.lang})
+                    </option>
+                  ))}
+              </select>
+
+              <select
+                disabled={!isOwner || !ttsEnabled}
+                value={ttsGender}
+                onChange={(e) => setTtsGender(e.target.value as TtsGenderPreference)}
+                className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 disabled:opacity-50"
+              >
+                <option value="any">{t('settings.genderAny')}</option>
+                <option value="female">{t('settings.genderFemale')}</option>
+                <option value="male">{t('settings.genderMale')}</option>
+              </select>
+
+              <div className="grid gap-2">
+                <label className="grid gap-1 text-xs text-slate-600">
+                  {t('settings.toneRate')}
+                  <input
+                    type="range"
+                    min={0.5}
+                    max={2}
+                    step={0.05}
+                    value={ttsRate}
+                    disabled={!isOwner || !ttsEnabled}
+                    onChange={(e) => setTtsRate(Number(e.target.value))}
+                  />
+                </label>
+                <label className="grid gap-1 text-xs text-slate-600">
+                  {t('settings.tonePitch')}
+                  <input
+                    type="range"
+                    min={0}
+                    max={2}
+                    step={0.05}
+                    value={ttsPitch}
+                    disabled={!isOwner || !ttsEnabled}
+                    onChange={(e) => setTtsPitch(Number(e.target.value))}
+                  />
+                </label>
+                <label className="grid gap-1 text-xs text-slate-600">
+                  {t('settings.toneVolume')}
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={ttsVolume}
+                    disabled={!isOwner || !ttsEnabled}
+                    onChange={(e) => setTtsVolume(Number(e.target.value))}
+                  />
+                </label>
+              </div>
             </div>
           </div>
         </div>

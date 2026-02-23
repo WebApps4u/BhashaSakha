@@ -2,6 +2,8 @@
  * This is a API server
  */
 
+import './fetchPolyfill.js'
+
 import express, {
   type Request,
   type Response,
@@ -13,6 +15,8 @@ import authRoutes from './routes/auth.js'
 import translateRoutes from './routes/translate.js'
 import configRoutes from './routes/config.js'
 import geminiRoutes from './routes/gemini.js'
+import adminRoutes from './routes/admin.js'
+import subscriptionRoutes from './routes/subscriptions.js'
 
 // load env
 dotenv.config()
@@ -30,6 +34,8 @@ app.use('/api/auth', authRoutes)
 app.use('/api/translate', translateRoutes)
 app.use('/api/config', configRoutes)
 app.use('/api/gemini', geminiRoutes)
+app.use('/api/admin', adminRoutes)
+app.use('/api/subscriptions', subscriptionRoutes)
 
 /**
  * health

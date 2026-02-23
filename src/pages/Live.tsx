@@ -9,8 +9,10 @@ import LiveFloatingControls from '@/components/live/LiveFloatingControls'
 import LiveShareModal from '@/components/live/LiveShareModal'
 import LiveSettingsModal from '@/components/live/LiveSettingsModal'
 import { useLiveController } from '@/hooks/useLiveController'
+import { useTranslation } from 'react-i18next'
 
 export default function Live() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { user, isReady } = useAuthStore()
 
@@ -142,7 +144,7 @@ export default function Live() {
         interim={speech.interim}
         rightLines={rightLines}
         translatingIds={live.translatingIds}
-        footerLeft={user ? 'Saved to your Dashboard while running.' : 'Sign in to save sessions.'}
+        footerLeft={user ? t('live.savedHint') : t('live.signInHintFooter')}
         languageChip={languageChip}
         ttsEnabled={ttsEnabled}
       />
@@ -179,9 +181,9 @@ export default function Live() {
         <div className="fixed inset-x-0 bottom-28 z-10">
           <div className="mx-auto max-w-6xl px-4">
             <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
-              Sign in to start live capture.{' '}
+              {t('live.signInToStart')}{' '}
               <Link className="font-medium text-slate-900 underline dark:text-slate-50" to="/login">
-                Go to login
+                {t('auth.goToLogin')}
               </Link>
             </div>
           </div>
