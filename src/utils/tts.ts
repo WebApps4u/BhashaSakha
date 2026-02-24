@@ -2,6 +2,26 @@ import type { TtsGenderPreference } from '@/store/settingsStore'
 
 const normalize = (v: string) => v.trim().toLowerCase()
 
+const normalizeLangTag = (lang: string) => {
+  const v = normalize(lang)
+  if (!v) return ''
+  if (v.includes('-')) return v
+  const m: Record<string, string> = {
+    en: 'en-us',
+    hi: 'hi-in',
+    mr: 'mr-in',
+    bn: 'bn-in',
+    ta: 'ta-in',
+    te: 'te-in',
+    kn: 'kn-in',
+    gu: 'gu-in',
+    pa: 'pa-in',
+    or: 'or-in',
+    ml: 'ml-in',
+  }
+  return m[v] ?? v
+}
+
 const inferGender = (voice: SpeechSynthesisVoice): 'female' | 'male' | 'unknown' => {
   const s = normalize(`${voice.name} ${voice.voiceURI}`)
   const female = /(female|woman|girl|feminine)/i.test(s)
@@ -65,13 +85,13 @@ export function speakTts({
     if (id !== requestSeq) return
 
     const utter = new SpeechSynthesisUtterance(trimmed)
-    utter.lang = lang
+    utter.lang = normalizeLangTag(lang)
     utter.rate = Math.min(2, Math.max(0.5, rate))
     utter.pitch = Math.min(2, Math.max(0, pitch))
     utter.volume = Math.min(1, Math.max(0, volume))
 
     const voices = synth.getVoices()
-    const lowerLang = normalize(lang)
+    const lowerLang = normalize(utter.lang)
 
     let selected: SpeechSynthesisVoice | undefined
     if (voiceUri) {
@@ -90,7 +110,14 @@ export function speakTts({
       selected = pickByGender(langMatches) ?? pickByGender(defaults) ?? defaults[0] ?? langMatches[0]
     }
 
-    if (selected) utter.voice = selected
+    if (!selected) {
+      selected = voices.find((v) => v.default) ?? voices[0]
+    }
+
+    if (selected) {
+      utter.voice = selected
+      utter.lang = selected.lang || utter.lang
+    }
 
     synth.cancel()
     await tick(30)
