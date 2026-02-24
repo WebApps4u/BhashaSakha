@@ -10,6 +10,7 @@ import LiveShareModal from '@/components/live/LiveShareModal'
 import LiveSettingsModal from '@/components/live/LiveSettingsModal'
 import { useLiveController } from '@/hooks/useLiveController'
 import { useTranslation } from 'react-i18next'
+import { useSettingsStore } from '@/store/settingsStore'
 
 export default function Live() {
   const { t } = useTranslation()
@@ -24,7 +25,8 @@ export default function Live() {
   const [targetLangs, setTargetLangs] = useState<string[]>(['hi'])
 
   const [speakerLabel, setSpeakerLabel] = useState('Speaker 1')
-  const [ttsEnabled, setTtsEnabled] = useState(false)
+  const ttsEnabled = useSettingsStore((s) => s.ttsEnabled)
+  const setTtsEnabled = useSettingsStore((s) => s.setTtsEnabled)
   const [ttsLang, setTtsLang] = useState('hi')
 
   const [showSettings, setShowSettings] = useState(false)
@@ -147,6 +149,7 @@ export default function Live() {
         footerLeft={user ? t('live.savedHint') : t('live.signInHintFooter')}
         languageChip={languageChip}
         ttsEnabled={ttsEnabled}
+        onToggleTts={() => setTtsEnabled(!ttsEnabled)}
       />
 
       <LiveFloatingControls

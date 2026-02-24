@@ -11,6 +11,31 @@ const inferGender = (voice: SpeechSynthesisVoice): 'female' | 'male' | 'unknown'
   return 'unknown'
 }
 
+let requestSeq = 0
+
+const waitForVoices = (timeoutMs = 800) => {
+  if (typeof window === 'undefined') return Promise.resolve([] as SpeechSynthesisVoice[])
+  const synth = window.speechSynthesis
+  if (!synth) return Promise.resolve([] as SpeechSynthesisVoice[])
+  const existing = synth.getVoices()
+  if (existing.length) return Promise.resolve(existing)
+
+  return new Promise<SpeechSynthesisVoice[]>((resolve) => {
+    let done = false
+    const finish = () => {
+      if (done) return
+      done = true
+      window.removeEventListener('voiceschanged', onChanged)
+      resolve(synth.getVoices())
+    }
+    const onChanged = () => finish()
+    window.addEventListener('voiceschanged', onChanged)
+    setTimeout(finish, timeoutMs)
+  })
+}
+
+const tick = (ms = 0) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
 export function speakTts({
   text,
   lang,
@@ -33,35 +58,54 @@ export function speakTts({
   const trimmed = text.trim()
   if (!trimmed) return false
 
-  const utter = new SpeechSynthesisUtterance(trimmed)
-  utter.lang = lang
-  utter.rate = Math.min(2, Math.max(0.5, rate))
-  utter.pitch = Math.min(2, Math.max(0, pitch))
-  utter.volume = Math.min(1, Math.max(0, volume))
+  const id = ++requestSeq
+  void (async () => {
+    const synth = window.speechSynthesis
+    await waitForVoices()
+    if (id !== requestSeq) return
 
-  const voices = window.speechSynthesis.getVoices()
-  const lowerLang = normalize(lang)
+    const utter = new SpeechSynthesisUtterance(trimmed)
+    utter.lang = lang
+    utter.rate = Math.min(2, Math.max(0.5, rate))
+    utter.pitch = Math.min(2, Math.max(0, pitch))
+    utter.volume = Math.min(1, Math.max(0, volume))
 
-  let selected: SpeechSynthesisVoice | undefined
-  if (voiceUri) {
-    selected = voices.find((v) => v.voiceURI === voiceUri)
-  }
+    const voices = synth.getVoices()
+    const lowerLang = normalize(lang)
 
-  if (!selected) {
-    const langMatches = voices.filter((v) => normalize(v.lang).startsWith(lowerLang))
-    const defaults = langMatches.filter((v) => v.default)
-
-    const pickByGender = (list: SpeechSynthesisVoice[]) => {
-      if (gender === 'any') return undefined
-      return list.find((v) => inferGender(v) === gender)
+    let selected: SpeechSynthesisVoice | undefined
+    if (voiceUri) {
+      selected = voices.find((v) => v.voiceURI === voiceUri)
     }
 
-    selected = pickByGender(langMatches) ?? pickByGender(defaults) ?? defaults[0] ?? langMatches[0]
-  }
+    if (!selected) {
+      const langMatches = voices.filter((v) => normalize(v.lang).startsWith(lowerLang))
+      const defaults = langMatches.filter((v) => v.default)
 
-  if (selected) utter.voice = selected
-  window.speechSynthesis.cancel()
-  window.speechSynthesis.speak(utter)
+      const pickByGender = (list: SpeechSynthesisVoice[]) => {
+        if (gender === 'any') return undefined
+        return list.find((v) => inferGender(v) === gender)
+      }
+
+      selected = pickByGender(langMatches) ?? pickByGender(defaults) ?? defaults[0] ?? langMatches[0]
+    }
+
+    if (selected) utter.voice = selected
+
+    synth.cancel()
+    await tick(30)
+    if (id !== requestSeq) return
+    synth.speak(utter)
+
+    await tick(250)
+    if (id !== requestSeq) return
+    if (!synth.speaking && !synth.pending) {
+      synth.cancel()
+      await tick(30)
+      if (id !== requestSeq) return
+      synth.speak(utter)
+    }
+  })()
+
   return true
 }
-

@@ -12,7 +12,7 @@ type SegmentRow = {
 }
 
 type TranslationRow = {
-  id: string
+  id?: string
   segment_id: string
   target_lang: string
   text: string
@@ -52,6 +52,9 @@ export function useLiveController({
   const [translatingIds, setTranslatingIds] = useState<Record<string, true>>({})
   const nextSeqRef = useRef(1)
 
+  const inflightRef = useRef(0)
+  const queueRef = useRef<Array<() => Promise<void>>>([])
+
   const desiredVisibility = useMemo(() => (privacy === 'shareable' ? 'public' : 'private'), [privacy])
 
   const ensureSession = async () => {
@@ -76,7 +79,7 @@ export function useLiveController({
     return data.id as string
   }
 
-  const translateAndPersist = async (segId: string, text: string, targets: string[]) => {
+  const translateOnly = async (text: string, targets: string[]) => {
     const { data: sessionData } = await supabase.auth.getSession()
     const accessToken = sessionData.session?.access_token ?? ''
 
@@ -104,10 +107,16 @@ export function useLiveController({
       throw new Error((json.error ?? 'Translation failed') + tried + details)
     }
 
-    const detected = json.detected_language ?? 'und'
+    return {
+      detected: json.detected_language ?? 'und',
+      translations: json.translations ?? {},
+    }
+  }
+
+  const persistTranslation = async (segId: string, detected: string, translations: Record<string, string>) => {
     await supabase.from('transcript_segments').update({ detected_lang: detected }).eq('id', segId)
 
-    const translationRows = Object.entries(json.translations ?? {}).map(([lang, translatedText]) => ({
+    const translationRows = Object.entries(translations).map(([lang, translatedText]) => ({
       segment_id: segId,
       target_lang: lang,
       text: translatedText,
@@ -122,20 +131,23 @@ export function useLiveController({
 
     const rows = (upserted ?? []) as TranslationRow[]
     setTranslationsBySegmentId((prev) => ({ ...prev, [segId]: rows }))
+  }
 
-    if (ttsEnabled && ttsLang) {
-      const speakText = rows.find((r) => r.target_lang === ttsLang)?.text
-      if (speakText) {
-        speakTts({
-          text: speakText,
-          lang: ttsLang,
-          voiceUri: ttsVoiceUri,
-          gender: ttsGender,
-          rate: ttsRate,
-          pitch: ttsPitch,
-          volume: ttsVolume,
-        })
-      }
+  const enqueue = (fn: () => Promise<void>) => {
+    queueRef.current.push(fn)
+    void drainQueue()
+  }
+
+  const drainQueue = async () => {
+    if (inflightRef.current >= 2) return
+    const job = queueRef.current.shift()
+    if (!job) return
+    inflightRef.current += 1
+    try {
+      await job()
+    } finally {
+      inflightRef.current -= 1
+      void drainQueue()
     }
   }
 
@@ -148,6 +160,13 @@ export function useLiveController({
       const seq = nextSeqRef.current++
       const optimisticId = crypto.randomUUID()
       setSegments((prev) => [...prev, { id: optimisticId, seq, speaker_label: speakerLabel, detected_lang: null, text }].sort((a, b) => a.seq - b.seq))
+
+      const shouldTranslate = isTranslateOn && targetLangs.length > 0
+      const translatePromise = shouldTranslate ? translateOnly(text, targetLangs) : null
+
+      if (shouldTranslate) {
+        setTranslatingIds((prev) => ({ ...prev, [optimisticId]: true }))
+      }
 
       const { data, error: insertErr } = await supabase
         .from('transcript_segments')
@@ -167,20 +186,59 @@ export function useLiveController({
 
       setSegments((prev) => prev.map((s) => (s.id === optimisticId ? { ...s, id: data.id } : s)))
 
-      if (!isTranslateOn || targetLangs.length === 0) return
-      setTranslatingIds((prev) => ({ ...prev, [data.id]: true }))
-      await translateAndPersist(data.id, text, targetLangs)
+      if (shouldTranslate) {
+        setTranslatingIds((prev) => {
+          const next = { ...prev }
+          delete next[optimisticId]
+          next[data.id] = true
+          return next
+        })
+        setTranslationsBySegmentId((prev) => {
+          if (!prev[optimisticId]) return prev
+          const next = { ...prev }
+          next[data.id] = prev[optimisticId]
+          delete next[optimisticId]
+          return next
+        })
+      }
+
+      if (!shouldTranslate || !translatePromise) return
+      enqueue(async () => {
+        try {
+          const result = await translatePromise
+          const rows = Object.entries(result.translations).map(([lang, translatedText]) => ({
+            segment_id: data.id,
+            target_lang: lang,
+            text: translatedText,
+          }))
+          setTranslationsBySegmentId((prev) => ({ ...prev, [data.id]: rows }))
+
+          if (ttsEnabled && ttsLang) {
+            const speakText = rows.find((r) => r.target_lang === ttsLang)?.text
+            if (speakText) {
+              speakTts({
+                text: speakText,
+                lang: ttsLang,
+                voiceUri: ttsVoiceUri,
+                gender: ttsGender,
+                rate: ttsRate,
+                pitch: ttsPitch,
+                volume: ttsVolume,
+              })
+            }
+          }
+
+          await persistTranslation(data.id, result.detected, result.translations)
+        } finally {
+          setTranslatingIds((prev) => {
+            const next = { ...prev }
+            delete next[data.id]
+            return next
+          })
+        }
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Live capture failed')
-    } finally {
-      setTranslatingIds((prev) => {
-        const next = { ...prev }
-        for (const id of Object.keys(next)) {
-          delete next[id]
-          break
-        }
-        return next
-      })
     }
   }
 

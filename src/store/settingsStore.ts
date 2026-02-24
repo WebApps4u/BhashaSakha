@@ -5,6 +5,7 @@ export type TtsGenderPreference = 'any' | 'female' | 'male'
 
 export type SettingsState = {
   uiLocale: UiLocale
+  ttsEnabled: boolean
   ttsVoiceUri: string
   ttsGender: TtsGenderPreference
   ttsRate: number
@@ -12,6 +13,7 @@ export type SettingsState = {
   ttsVolume: number
   init: () => void
   setUiLocale: (locale: UiLocale) => void
+  setTtsEnabled: (enabled: boolean) => void
   setTtsVoiceUri: (voiceUri: string) => void
   setTtsGender: (pref: TtsGenderPreference) => void
   setTtsRate: (value: number) => void
@@ -39,7 +41,17 @@ const strFromStorage = (key: string, fallback: string) => {
   return window.localStorage.getItem(key) ?? fallback
 }
 
+const boolFromStorage = (key: string, fallback: boolean) => {
+  if (typeof window === 'undefined') return fallback
+  const raw = window.localStorage.getItem(key)
+  if (raw == null) return fallback
+  if (raw === 'true') return true
+  if (raw === 'false') return false
+  return fallback
+}
+
 const SETTINGS_KEYS = {
+  ttsEnabled: 'bs_tts_enabled',
   ttsVoiceUri: 'bs_tts_voice_uri',
   ttsGender: 'bs_tts_gender',
   ttsRate: 'bs_tts_rate',
@@ -49,6 +61,7 @@ const SETTINGS_KEYS = {
 
 export const useSettingsStore = create<SettingsState>((set) => ({
   uiLocale: pickStoredLocale(),
+  ttsEnabled: boolFromStorage(SETTINGS_KEYS.ttsEnabled, false),
   ttsVoiceUri: strFromStorage(SETTINGS_KEYS.ttsVoiceUri, ''),
   ttsGender: (strFromStorage(SETTINGS_KEYS.ttsGender, 'any') as TtsGenderPreference) || 'any',
   ttsRate: numFromStorage(SETTINGS_KEYS.ttsRate, 1),
@@ -65,6 +78,10 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     persistUiLocale(locale)
     void i18n.changeLanguage(locale)
     set({ uiLocale: locale })
+  },
+  setTtsEnabled: (enabled) => {
+    if (typeof window !== 'undefined') window.localStorage.setItem(SETTINGS_KEYS.ttsEnabled, String(!!enabled))
+    set({ ttsEnabled: !!enabled })
   },
   setTtsVoiceUri: (voiceUri) => {
     if (typeof window !== 'undefined') window.localStorage.setItem(SETTINGS_KEYS.ttsVoiceUri, voiceUri)

@@ -1,4 +1,4 @@
-import { Volume2 } from 'lucide-react'
+import { Volume2, VolumeX } from 'lucide-react'
 
 export default function LiveCanvas({
   showRight,
@@ -9,6 +9,7 @@ export default function LiveCanvas({
   footerLeft,
   languageChip,
   ttsEnabled,
+  onToggleTts,
 }: {
   showRight: boolean
   leftLines: Array<{ id: string; text: string }>
@@ -18,6 +19,7 @@ export default function LiveCanvas({
   footerLeft: string
   languageChip: string
   ttsEnabled: boolean
+  onToggleTts?: () => void
 }) {
   return (
     <div className="relative mx-auto max-w-6xl px-4 pb-32">
@@ -61,10 +63,20 @@ export default function LiveCanvas({
 
       <div className="mt-4 flex items-center justify-between">
         <div className="text-xs text-slate-500 dark:text-slate-300">{footerLeft}</div>
-        <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
+        <button
+          type="button"
+          onClick={onToggleTts}
+          disabled={!onToggleTts}
+          aria-pressed={ttsEnabled}
+          className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-default disabled:hover:bg-white dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10 dark:disabled:hover:bg-white/5"
+        >
           {languageChip}
-          {ttsEnabled ? <Volume2 className="h-3.5 w-3.5 text-slate-500 dark:text-slate-300" /> : null}
-        </div>
+          {ttsEnabled ? (
+            <Volume2 className="h-3.5 w-3.5 text-slate-500 dark:text-slate-300" />
+          ) : (
+            <VolumeX className="h-3.5 w-3.5 text-slate-400 dark:text-slate-400" />
+          )}
+        </button>
       </div>
     </div>
   )
