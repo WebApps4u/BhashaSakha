@@ -1,0 +1,344 @@
+import { Router, type Request, type Response } from 'express'
+import crypto from 'crypto'
+import { createClient } from '@supabase/supabase-js'
+
+const router = Router()
+
+const getSupabaseUrl = () => process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? ''
+const getSupabaseAnonKey = () => process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY ?? ''
+
+const parseBearer = (req: Request) => {
+  const auth = req.header('authorization') ?? ''
+  return auth.startsWith('Bearer ') ? auth.slice('Bearer '.length).trim() : ''
+}
+
+const requireAnonEnv = () => {
+  const SUPABASE_URL = getSupabaseUrl()
+  const SUPABASE_ANON_KEY = getSupabaseAnonKey()
+  if (!SUPABASE_URL) throw new Error('Missing SUPABASE_URL')
+  if (!SUPABASE_ANON_KEY) throw new Error('Missing SUPABASE_ANON_KEY')
+}
+
+const anonClient = () => {
+  requireAnonEnv()
+  return createClient(getSupabaseUrl(), getSupabaseAnonKey(), {
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
+}
+
+const verifyUser = async (req: Request) => {
+  requireAnonEnv()
+  const token = parseBearer(req)
+  if (!token) return { ok: false as const, status: 401, error: 'Unauthorized' }
+  const supabase = anonClient()
+  const { data, error } = await supabase.auth.getUser(token)
+  if (error || !data.user) return { ok: false as const, status: 401, error: 'Unauthorized' }
+  return { ok: true as const, userId: data.user.id, token }
+}
+
+const getGoogleTtsApiKey = () => (process.env.GOOGLE_TTS_API_KEY ?? process.env.GOOGLE_API_KEY ?? '').trim()
+const getGeminiApiKey = () => (process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY ?? '').trim()
+
+const normalizeLang = (lang: string) => {
+  const v = String(lang ?? '').trim().toLowerCase()
+  if (!v) return ''
+  if (v.includes('-')) return v
+  const map: Record<string, string> = {
+    en: 'en-us',
+    hi: 'hi-in',
+    mr: 'mr-in',
+    bn: 'bn-in',
+    ta: 'ta-in',
+    te: 'te-in',
+    kn: 'kn-in',
+    gu: 'gu-in',
+    pa: 'pa-in',
+    or: 'or-in',
+    ml: 'ml-in',
+  }
+  return map[v] ?? v
+}
+
+type VoiceInfo = { name: string; languageCodes: string[]; ssmlGender?: string }
+
+const voicesCache = new Map<string, { at: number; voices: VoiceInfo[] }>()
+const VOICES_TTL_MS = 6 * 60_000
+
+const listVoices = async (apiKey: string, languageCode: string) => {
+  const cached = voicesCache.get(languageCode)
+  const now = Date.now()
+  if (cached && now - cached.at < VOICES_TTL_MS) return cached.voices
+
+  const url = `https://texttospeech.googleapis.com/v1/voices?languageCode=${encodeURIComponent(languageCode)}`
+  const resp = await fetch(url, { method: 'GET', headers: { 'X-Goog-Api-Key': apiKey } })
+  const text = await resp.text().catch(() => '')
+  if (!resp.ok) throw new Error(text || `tts_voices_http_${resp.status}`)
+  const parsed = JSON.parse(text) as any
+  const voices = ((parsed.voices ?? []) as any[])
+    .map((v) => ({
+      name: String(v.name ?? ''),
+      languageCodes: Array.isArray(v.languageCodes) ? (v.languageCodes as any[]).map((x) => String(x)) : [],
+      ssmlGender: typeof v.ssmlGender === 'string' ? v.ssmlGender : undefined,
+    }))
+    .filter((v) => v.name && v.languageCodes.length)
+
+  voicesCache.set(languageCode, { at: now, voices })
+  return voices
+}
+
+const pickVoice = (voices: VoiceInfo[], languageCode: string, gender: 'FEMALE' | 'MALE' | 'NEUTRAL' | 'SSML_VOICE_GENDER_UNSPECIFIED') => {
+  const lc = languageCode.toLowerCase()
+  const supports = voices.filter((v) => v.languageCodes.some((c) => String(c).toLowerCase() === lc))
+  const preferred = supports.find((v) => v.ssmlGender === gender) ?? supports[0]
+  return preferred ?? voices[0] ?? null
+}
+
+const audioCache = new Map<string, { at: number; buf: Buffer; contentType: string }>()
+const AUDIO_TTL_MS = 10 * 60_000
+const AUDIO_MAX = 80
+
+const cacheGet = (key: string) => {
+  const row = audioCache.get(key)
+  if (!row) return null
+  if (Date.now() - row.at > AUDIO_TTL_MS) {
+    audioCache.delete(key)
+    return null
+  }
+  return row
+}
+
+const cacheSet = (key: string, buf: Buffer, contentType: string) => {
+  if (audioCache.size > AUDIO_MAX) {
+    const oldest = Array.from(audioCache.entries()).sort((a, b) => a[1].at - b[1].at)[0]
+    if (oldest) audioCache.delete(oldest[0])
+  }
+  audioCache.set(key, { at: Date.now(), buf, contentType })
+}
+
+const pcm16leToWav = (pcm: Buffer, sampleRate = 24000, channels = 1) => {
+  const bytesPerSample = 2
+  const blockAlign = channels * bytesPerSample
+  const byteRate = sampleRate * blockAlign
+  const dataSize = pcm.length
+  const chunkSize = 36 + dataSize
+
+  const header = Buffer.alloc(44)
+  header.write('RIFF', 0)
+  header.writeUInt32LE(chunkSize, 4)
+  header.write('WAVE', 8)
+  header.write('fmt ', 12)
+  header.writeUInt32LE(16, 16)
+  header.writeUInt16LE(1, 20)
+  header.writeUInt16LE(channels, 22)
+  header.writeUInt32LE(sampleRate, 24)
+  header.writeUInt32LE(byteRate, 28)
+  header.writeUInt16LE(blockAlign, 32)
+  header.writeUInt16LE(bytesPerSample * 8, 34)
+  header.write('data', 36)
+  header.writeUInt32LE(dataSize, 40)
+
+  return Buffer.concat([header, pcm])
+}
+
+const extractInlineAudio = (bodyText: string) => {
+  const parsed = JSON.parse(bodyText) as any
+  const part = parsed?.candidates?.[0]?.content?.parts?.[0]
+  const inline = part?.inlineData
+  const data = typeof inline?.data === 'string' ? inline.data : ''
+  const mimeType = typeof inline?.mimeType === 'string' ? String(inline.mimeType) : ''
+  if (!data) return null
+  const buf = Buffer.from(data, 'base64')
+  return { buf, mimeType }
+}
+
+const callGeminiTts = async ({
+  apiKey,
+  model,
+  text,
+  lang,
+  voiceName,
+}: {
+  apiKey: string
+  model: string
+  text: string
+  lang: string
+  voiceName: string
+}) => {
+  const prompt = `Read the following text verbatim in ${lang} with natural prosody. Do not add or omit words.\n\nTEXT:\n${text}`
+  const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: {
+        responseModalities: ['AUDIO'],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: {
+              voiceName,
+            },
+          },
+        },
+      },
+    }),
+  })
+  const bodyText = await resp.text().catch(() => '')
+  return { ok: resp.ok, status: resp.status, bodyText }
+}
+
+const synthGemini = async ({
+  apiKey,
+  text,
+  lang,
+}: {
+  apiKey: string
+  text: string
+  lang: string
+}): Promise<{ buf: Buffer; contentType: string } | null> => {
+  const voiceName = (process.env.GEMINI_TTS_VOICE_NAME ?? '').trim() || 'Kore'
+  const rawModels = (process.env.GEMINI_TTS_MODELS ?? '').trim()
+  const models = rawModels
+    ? rawModels.split(',').map((s) => s.trim()).filter(Boolean)
+    : [
+        'gemini-2.5-flash-preview-tts',
+        'gemini-2.5-pro-preview-tts',
+        'gemini-2.5-flash-lite-preview-tts',
+        'gemini-2.5-flash-tts',
+        'gemini-2.5-pro-tts',
+      ]
+
+  let lastNon404: { status: number; bodyText: string } | null = null
+  for (const model of models) {
+    const r = await callGeminiTts({ apiKey, model, text, lang, voiceName })
+    if (r.ok) {
+      const extracted = extractInlineAudio(r.bodyText)
+      if (!extracted) throw new Error('tts_invalid_response')
+      const mime = extracted.mimeType.toLowerCase()
+      if (mime.includes('wav')) return { buf: extracted.buf, contentType: 'audio/wav' }
+      if (mime.includes('mpeg') || mime.includes('mp3')) return { buf: extracted.buf, contentType: 'audio/mpeg' }
+      return { buf: pcm16leToWav(extracted.buf), contentType: 'audio/wav' }
+    }
+    if (r.status !== 404) {
+      lastNon404 = { status: r.status, bodyText: r.bodyText }
+      break
+    }
+  }
+
+  if (lastNon404) {
+    const e = new Error(`gemini_tts_http_${lastNon404.status}`)
+    ;(e as any).details = lastNon404.bodyText.slice(0, 900)
+    throw e
+  }
+  return null
+}
+
+router.post('/', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const v = await verifyUser(req)
+    if (!v.ok) {
+      res.status(v.status).json({ success: false, error: v.error })
+      return
+    }
+
+    const geminiKey = getGeminiApiKey()
+    const googleTtsKey = getGoogleTtsApiKey()
+
+    const text = typeof (req.body as any)?.text === 'string' ? String((req.body as any).text) : ''
+    const lang = normalizeLang(typeof (req.body as any)?.lang === 'string' ? String((req.body as any).lang) : '')
+    const rate = Number((req.body as any)?.rate ?? 1)
+    const pitch = Number((req.body as any)?.pitch ?? 0)
+    const genderRaw = String((req.body as any)?.gender ?? 'NEUTRAL').toUpperCase()
+    const gender = (['FEMALE', 'MALE', 'NEUTRAL', 'SSML_VOICE_GENDER_UNSPECIFIED'] as const).includes(genderRaw as any)
+      ? (genderRaw as any)
+      : 'NEUTRAL'
+
+    const trimmed = text.trim()
+    if (!trimmed) {
+      res.status(400).json({ success: false, error: 'text is required' })
+      return
+    }
+    if (trimmed.length > 1200) {
+      res.status(413).json({ success: false, error: 'text is too long (max 1200 chars)' })
+      return
+    }
+    if (!lang) {
+      res.status(400).json({ success: false, error: 'lang is required' })
+      return
+    }
+
+    const cacheKey = crypto
+      .createHash('sha256')
+      .update(JSON.stringify({ t: trimmed, l: lang, r: Math.min(4, Math.max(0.25, rate)), p: Math.min(20, Math.max(-20, pitch)), g: gender }))
+      .digest('hex')
+
+    const cached = cacheGet(cacheKey)
+    if (cached) {
+      res.status(200)
+      res.setHeader('Content-Type', cached.contentType)
+      res.setHeader('Cache-Control', 'private, max-age=600')
+      res.send(cached.buf)
+      return
+    }
+
+    if (geminiKey) {
+      const gemini = await synthGemini({ apiKey: geminiKey, text: trimmed, lang })
+      if (gemini) {
+        cacheSet(cacheKey, gemini.buf, gemini.contentType)
+        res.status(200)
+        res.setHeader('Content-Type', gemini.contentType)
+        res.setHeader('Cache-Control', 'private, max-age=600')
+        res.send(gemini.buf)
+        return
+      }
+    }
+
+    if (!googleTtsKey) {
+      res.status(500).json({ success: false, error: 'No TTS provider configured on server (missing GEMINI_API_KEY/GOOGLE_API_KEY and GOOGLE_TTS_API_KEY)' })
+      return
+    }
+
+    const voices = await listVoices(googleTtsKey, lang)
+    const chosen = pickVoice(voices, lang, gender)
+    if (!chosen) {
+      res.status(404).json({ success: false, error: `No voice available for ${lang}` })
+      return
+    }
+
+    const synthResp = await fetch('https://texttospeech.googleapis.com/v1/text:synthesize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8', 'X-Goog-Api-Key': googleTtsKey },
+      body: JSON.stringify({
+        input: { text: trimmed },
+        voice: { languageCode: lang, name: chosen.name, ssmlGender: gender },
+        audioConfig: {
+          audioEncoding: 'MP3',
+          speakingRate: Math.min(4, Math.max(0.25, rate)),
+          pitch: Math.min(20, Math.max(-20, pitch)),
+        },
+      }),
+    })
+    const synthText = await synthResp.text().catch(() => '')
+    if (!synthResp.ok) {
+      res.status(502).json({ success: false, error: `tts_provider_http_${synthResp.status}`, details: synthText.slice(0, 800) })
+      return
+    }
+    const synthJson = JSON.parse(synthText) as any
+    const audioContent = typeof synthJson?.audioContent === 'string' ? synthJson.audioContent : ''
+    if (!audioContent) {
+      res.status(502).json({ success: false, error: 'tts_invalid_response' })
+      return
+    }
+
+    const buf = Buffer.from(audioContent, 'base64')
+    cacheSet(cacheKey, buf, 'audio/mpeg')
+
+    res.status(200)
+    res.setHeader('Content-Type', 'audio/mpeg')
+    res.setHeader('Cache-Control', 'private, max-age=600')
+    res.send(buf)
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Server error' })
+  }
+})
+
+export default router

@@ -8,7 +8,7 @@ import { useSpeechCaptions } from '@/hooks/useSpeechCaptions'
 import LiveTab from '@/components/session/LiveTab'
 import SessionHeader from '@/components/session/SessionHeader'
 import { useSettingsStore } from '@/store/settingsStore'
-import { speakTts } from '@/utils/tts'
+import { playServerTts } from '@/utils/tts'
 
 type SessionRow = {
   id: string
@@ -58,7 +58,6 @@ export default function Session() {
   const [ttsLang, setTtsLang] = useState('')
   const [translatingSegmentIds, setTranslatingSegmentIds] = useState<Record<string, true>>({})
 
-  const ttsVoiceUri = useSettingsStore((s) => s.ttsVoiceUri)
   const ttsGender = useSettingsStore((s) => s.ttsGender)
   const ttsRate = useSettingsStore((s) => s.ttsRate)
   const ttsPitch = useSettingsStore((s) => s.ttsPitch)
@@ -313,15 +312,7 @@ export default function Session() {
           if (ttsEnabled && ttsLang) {
             const speakText = rows.find((r) => r.target_lang === ttsLang)?.text
             if (speakText) {
-              speakTts({
-                text: speakText,
-                lang: ttsLang,
-                voiceUri: ttsVoiceUri,
-                gender: ttsGender,
-                rate: ttsRate,
-                pitch: ttsPitch,
-                volume: ttsVolume,
-              })
+              await playServerTts({ text: speakText, lang: ttsLang, gender: ttsGender, rate: ttsRate, pitch: ttsPitch, volume: ttsVolume })
             }
           }
         }

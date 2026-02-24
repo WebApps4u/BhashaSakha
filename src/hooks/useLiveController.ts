@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import { useSettingsStore } from '@/store/settingsStore'
-import { speakTts } from '@/utils/tts'
+import { playServerTts } from '@/utils/tts'
 
 type SegmentRow = {
   id: string
@@ -37,7 +37,6 @@ export function useLiveController({
   ttsEnabled: boolean
   ttsLang: string
 }) {
-  const ttsVoiceUri = useSettingsStore((s) => s.ttsVoiceUri)
   const ttsGender = useSettingsStore((s) => s.ttsGender)
   const ttsRate = useSettingsStore((s) => s.ttsRate)
   const ttsPitch = useSettingsStore((s) => s.ttsPitch)
@@ -216,10 +215,9 @@ export function useLiveController({
           if (ttsEnabled && ttsLang) {
             const speakText = rows.find((r) => r.target_lang === ttsLang)?.text
             if (speakText) {
-              speakTts({
+              await playServerTts({
                 text: speakText,
                 lang: ttsLang,
-                voiceUri: ttsVoiceUri,
                 gender: ttsGender,
                 rate: ttsRate,
                 pitch: ttsPitch,
