@@ -13,6 +13,8 @@ const parseBearer = (req: Request) => {
   return auth.startsWith('Bearer ') ? auth.slice('Bearer '.length).trim() : ''
 }
 
+const todayUtcDate = () => new Date().toISOString().slice(0, 10)
+
 const requireAnonEnv = () => {
   const SUPABASE_URL = getSupabaseUrl()
   const SUPABASE_ANON_KEY = getSupabaseAnonKey()
@@ -32,6 +34,18 @@ const anonClient = () => {
   })
 }
 
+const userClient = (token: string) => {
+  requireAnonEnv()
+  return createClient(getSupabaseUrl(), getSupabaseAnonKey(), {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  })
+}
+
 const adminClient = () => {
   requireServiceEnv()
   return createClient(getSupabaseUrl(), getSupabaseServiceRoleKey(), {
@@ -47,6 +61,38 @@ const verifyUser = async (req: Request) => {
   const { data, error } = await supabase.auth.getUser(token)
   if (error || !data.user) return { ok: false as const, status: 401, error: 'Unauthorized' }
   return { ok: true as const, userId: data.user.id, token }
+}
+
+const normalizePlanTier = (planCode: string) => {
+  const v = String(planCode ?? '').trim().toLowerCase()
+  return v === 'free' ? 'free' : 'pro'
+}
+
+const isStylePromptAllowedForUser = async ({ userId, token }: { userId: string; token: string }) => {
+  const supabase = getSupabaseServiceRoleKey() ? adminClient() : userClient(token)
+  const { data: flag } = await supabase
+    .from('feature_flags')
+    .select('is_enabled,config')
+    .eq('key', 'tts_style_prompting')
+    .maybeSingle()
+  if (!flag || !(flag as any).is_enabled) return false
+
+  const allowed = (flag as any)?.config?.allowed_plans
+  const allowedPlans = Array.isArray(allowed) ? allowed.map((x: any) => String(x).toLowerCase()) : ['free', 'pro']
+
+  const today = todayUtcDate()
+  const { data: sub } = await supabase
+    .from('user_subscriptions')
+    .select('plan_code,effective_from,created_at')
+    .eq('user_id', userId)
+    .lte('effective_from', today)
+    .order('effective_from', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const planTier = normalizePlanTier((sub as any)?.plan_code ?? 'free')
+  return allowedPlans.includes(planTier)
 }
 
 const getGoogleTtsApiKey = () => (process.env.GOOGLE_TTS_API_KEY ?? process.env.GOOGLE_API_KEY ?? '').trim()
@@ -250,14 +296,19 @@ const callGeminiTts = async ({
   text,
   lang,
   voiceName,
+  stylePrompt,
 }: {
   apiKey: string
   model: string
   text: string
   lang: string
   voiceName: string
+  stylePrompt: string
 }) => {
-  const prompt = `Read the following text verbatim in ${lang} with natural prosody. Do not add or omit words.\n\nTEXT:\n${text}`
+  const styleLine = stylePrompt ? `STYLE: ${stylePrompt}\n` : ''
+  const prompt =
+    styleLine +
+    `Read the following text verbatim in ${lang} with natural prosody. Do not add or omit words.\n\nTEXT:\n${text}`
   const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
@@ -283,10 +334,12 @@ const synthGemini = async ({
   apiKey,
   text,
   lang,
+  stylePrompt,
 }: {
   apiKey: string
   text: string
   lang: string
+  stylePrompt: string
 }): Promise<{ buf: Buffer; contentType: string } | null> => {
   const voiceName = (process.env.GEMINI_TTS_VOICE_NAME ?? '').trim() || 'Kore'
   const rawModels = (process.env.GEMINI_TTS_MODELS ?? '').trim()
@@ -302,7 +355,7 @@ const synthGemini = async ({
 
   let lastNon404: { status: number; bodyText: string } | null = null
   for (const model of models) {
-    const r = await callGeminiTts({ apiKey, model, text, lang, voiceName })
+    const r = await callGeminiTts({ apiKey, model, text, lang, voiceName, stylePrompt })
     if (r.ok) {
       const extracted = extractInlineAudio(r.bodyText)
       if (!extracted) throw new Error('tts_invalid_response')
@@ -340,6 +393,7 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
     const lang = normalizeLang(typeof (req.body as any)?.lang === 'string' ? String((req.body as any).lang) : '')
     const rate = Number((req.body as any)?.rate ?? 1)
     const pitch = Number((req.body as any)?.pitch ?? 0)
+    let stylePrompt = typeof (req.body as any)?.style === 'string' ? String((req.body as any).style).trim().slice(0, 240) : ''
     const genderRaw = String((req.body as any)?.gender ?? 'NEUTRAL').toUpperCase()
     const gender = (['FEMALE', 'MALE', 'NEUTRAL', 'SSML_VOICE_GENDER_UNSPECIFIED'] as const).includes(genderRaw as any)
       ? (genderRaw as any)
@@ -359,6 +413,11 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
       return
     }
 
+    if (stylePrompt) {
+      const allowed = await isStylePromptAllowedForUser({ userId: v.userId, token: v.token })
+      if (!allowed) stylePrompt = ''
+    }
+
     const baseKey = {
       v: ttsCacheVersion(),
       t: trimmed,
@@ -366,6 +425,7 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
       r: Math.min(4, Math.max(0.25, rate)),
       p: Math.min(20, Math.max(-20, pitch)),
       g: gender,
+      s: stylePrompt,
     }
 
     if (geminiKey) {
@@ -390,7 +450,7 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
         return
       }
 
-      const gemini = await synthGemini({ apiKey: geminiKey, text: trimmed, lang })
+      const gemini = await synthGemini({ apiKey: geminiKey, text: trimmed, lang, stylePrompt })
       if (gemini) {
         cacheSet(geminiCacheKey, gemini.buf, gemini.contentType)
         await storagePut({ cacheKey: geminiCacheKey, lang, contentType: gemini.contentType, buf: gemini.buf })

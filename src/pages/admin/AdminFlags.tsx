@@ -9,6 +9,29 @@ type FlagRow = {
   payload: unknown
 }
 
+type StyleMode = 'both' | 'pro' | 'free'
+
+const parseStyleMode = (raw: string): StyleMode => {
+  try {
+    const json = JSON.parse(raw || '{}') as any
+    const arr = json?.allowed_plans
+    const allowed = Array.isArray(arr) ? arr.map((x: any) => String(x).toLowerCase()) : []
+    const hasFree = allowed.includes('free')
+    const hasPro = allowed.includes('pro')
+    if (hasFree && hasPro) return 'both'
+    if (hasPro) return 'pro'
+    if (hasFree) return 'free'
+    return 'both'
+  } catch {
+    return 'both'
+  }
+}
+
+const setStyleModePayload = (mode: StyleMode) => {
+  const allowed_plans = mode === 'both' ? ['free', 'pro'] : mode === 'pro' ? ['pro'] : ['free']
+  return JSON.stringify({ allowed_plans }, null, 2)
+}
+
 const tryStringify = (v: unknown) => {
   try {
     return JSON.stringify(v ?? {}, null, 2)
@@ -145,6 +168,7 @@ export default function AdminFlags() {
           <div className="mt-4 space-y-3">
             {sorted.map((row) => {
               const busy = busyKey === row.key
+              const isStyleFlag = row.key === 'tts_style_prompting'
               return (
                 <div key={row.key} className="rounded-2xl border border-slate-200 bg-white p-4">
                   <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -166,6 +190,23 @@ export default function AdminFlags() {
                           />
                           Enabled
                         </label>
+                        {isStyleFlag ? (
+                          <label className="inline-flex items-center gap-2">
+                            <span className="text-xs text-slate-600">Access</span>
+                            <select
+                              value={parseStyleMode(draftPayloads[row.key] ?? '{}')}
+                              onChange={(e) => {
+                                const mode = e.target.value as StyleMode
+                                setDraftPayloads((prev) => ({ ...prev, [row.key]: setStyleModePayload(mode) }))
+                              }}
+                              className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-900 outline-none"
+                            >
+                              <option value="both">Free + Pro</option>
+                              <option value="pro">Pro only</option>
+                              <option value="free">Free only</option>
+                            </select>
+                          </label>
+                        ) : null}
                       </div>
                     </div>
 

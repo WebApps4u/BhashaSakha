@@ -149,6 +149,7 @@ export async function playServerTts({
   rate,
   pitch,
   volume,
+  stylePrompt,
 }: {
   text: string
   lang: string
@@ -156,6 +157,7 @@ export async function playServerTts({
   rate: number
   pitch: number
   volume: number
+  stylePrompt?: string
 }) {
   if (typeof window === 'undefined') return false
   const trimmed = text.trim()
@@ -184,7 +186,7 @@ export async function playServerTts({
     const resp = await fetch('/api/tts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ text: trimmed, lang, gender: genderParam, rate, pitch }),
+      body: JSON.stringify({ text: trimmed, lang, gender: genderParam, rate, pitch, style: String(stylePrompt ?? '').slice(0, 240) || undefined }),
       signal: audioAbort.signal,
     })
 

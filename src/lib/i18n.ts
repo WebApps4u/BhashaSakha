@@ -116,6 +116,9 @@ export const resources = {
         toneRate: 'Rate',
         tonePitch: 'Pitch',
         toneVolume: 'Volume',
+        ttsStylePrompt: 'TTS style prompt',
+        ttsStylePromptHint: 'Used by server TTS to control tone (Gemini). Example: “A calm female voice, customer support style.”',
+        ttsStylePromptPlaceholder: 'e.g. A male Marathi voice, slightly energetic, studio quality.',
       },
       dashboard: {
         title: 'Dashboard',
@@ -201,6 +204,9 @@ export const resources = {
         toneRate: 'गति',
         tonePitch: 'पिच',
         toneVolume: 'वॉल्यूम',
+        ttsStylePrompt: 'TTS स्टाइल प्रॉम्प्ट',
+        ttsStylePromptHint: 'सर्वर TTS (Gemini) में आवाज़ का टोन नियंत्रित करता है। उदाहरण: “शांत महिला आवाज़, कस्टमर सपोर्ट शैली।”',
+        ttsStylePromptPlaceholder: 'उदा. मराठी पुरुष आवाज़, थोड़ी ऊर्जा, स्टूडियो क्वालिटी।',
       },
       dashboard: {
         title: 'डैशबोर्ड',
@@ -333,4 +339,3 @@ i18n
   })
 
 export default i18n
-

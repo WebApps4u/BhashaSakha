@@ -62,6 +62,7 @@ export default function Session() {
   const ttsRate = useSettingsStore((s) => s.ttsRate)
   const ttsPitch = useSettingsStore((s) => s.ttsPitch)
   const ttsVolume = useSettingsStore((s) => s.ttsVolume)
+  const ttsStylePrompt = useSettingsStore((s) => s.ttsStylePrompt)
 
   const isOwner = useMemo(() => !!user && !!session && user.id === session.owner_id, [session, user])
   const shareUrl = useMemo(() => (session ? `${window.location.origin}/s/${session.id}` : ''), [session])
@@ -312,7 +313,7 @@ export default function Session() {
           if (ttsEnabled && ttsLang) {
             const speakText = rows.find((r) => r.target_lang === ttsLang)?.text
             if (speakText) {
-              await playServerTts({ text: speakText, lang: ttsLang, gender: ttsGender, rate: ttsRate, pitch: ttsPitch, volume: ttsVolume })
+              await playServerTts({ text: speakText, lang: ttsLang, gender: ttsGender, rate: ttsRate, pitch: ttsPitch, volume: ttsVolume, stylePrompt: ttsStylePrompt })
             }
           }
         }

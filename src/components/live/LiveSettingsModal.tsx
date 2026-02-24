@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { UI_LOCALES, type UiLocale } from '@/lib/i18n'
 import { useSettingsStore, type TtsGenderPreference } from '@/store/settingsStore'
 import { useSpeechVoices } from '@/hooks/useSpeechVoices'
+import { useTtsStyleAccess } from '@/hooks/useTtsStyleAccess'
 
 const SPEAKERS = ['Speaker 1', 'Speaker 2', 'Speaker 3', 'Speaker 4']
 
@@ -42,6 +43,8 @@ export default function LiveSettingsModal({
   const setUiLocale = useSettingsStore((s) => s.setUiLocale)
   const ttsVoiceUri = useSettingsStore((s) => s.ttsVoiceUri)
   const setTtsVoiceUri = useSettingsStore((s) => s.setTtsVoiceUri)
+  const ttsStylePrompt = useSettingsStore((s) => s.ttsStylePrompt)
+  const setTtsStylePrompt = useSettingsStore((s) => s.setTtsStylePrompt)
   const ttsGender = useSettingsStore((s) => s.ttsGender)
   const setTtsGender = useSettingsStore((s) => s.setTtsGender)
   const ttsRate = useSettingsStore((s) => s.ttsRate)
@@ -51,6 +54,7 @@ export default function LiveSettingsModal({
   const ttsVolume = useSettingsStore((s) => s.ttsVolume)
   const setTtsVolume = useSettingsStore((s) => s.setTtsVolume)
   const { voices } = useSpeechVoices()
+  const { allowed: stylePromptAllowed } = useTtsStyleAccess()
   if (!open) return null
 
   return (
@@ -178,6 +182,21 @@ export default function LiveSettingsModal({
                 ))}
               </select>
             </div>
+
+            {stylePromptAllowed ? (
+              <label className="mt-3 grid gap-1 text-xs text-slate-600 dark:text-slate-300">
+                {t('settings.ttsStylePrompt')}
+                <textarea
+                  rows={3}
+                  value={ttsStylePrompt}
+                  disabled={!ttsEnabled}
+                  onChange={(e) => setTtsStylePrompt(e.target.value)}
+                  placeholder={t('settings.ttsStylePromptPlaceholder')}
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-50"
+                />
+                <div className="text-[11px] text-slate-500 dark:text-slate-300">{t('settings.ttsStylePromptHint')}</div>
+              </label>
+            ) : null}
 
             <div className="mt-3 grid gap-3 md:grid-cols-2">
               <label className="grid gap-1 text-xs text-slate-600 dark:text-slate-300">

@@ -41,6 +41,7 @@ export function useLiveController({
   const ttsRate = useSettingsStore((s) => s.ttsRate)
   const ttsPitch = useSettingsStore((s) => s.ttsPitch)
   const ttsVolume = useSettingsStore((s) => s.ttsVolume)
+  const ttsStylePrompt = useSettingsStore((s) => s.ttsStylePrompt)
 
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [shareUrl, setShareUrl] = useState('')
@@ -222,6 +223,7 @@ export function useLiveController({
                 rate: ttsRate,
                 pitch: ttsPitch,
                 volume: ttsVolume,
+                stylePrompt: ttsStylePrompt,
               })
             }
           }

@@ -6,6 +6,7 @@ export type TtsGenderPreference = 'any' | 'female' | 'male'
 export type SettingsState = {
   uiLocale: UiLocale
   ttsEnabled: boolean
+  ttsStylePrompt: string
   ttsVoiceUri: string
   ttsGender: TtsGenderPreference
   ttsRate: number
@@ -14,6 +15,7 @@ export type SettingsState = {
   init: () => void
   setUiLocale: (locale: UiLocale) => void
   setTtsEnabled: (enabled: boolean) => void
+  setTtsStylePrompt: (prompt: string) => void
   setTtsVoiceUri: (voiceUri: string) => void
   setTtsGender: (pref: TtsGenderPreference) => void
   setTtsRate: (value: number) => void
@@ -52,6 +54,7 @@ const boolFromStorage = (key: string, fallback: boolean) => {
 
 const SETTINGS_KEYS = {
   ttsEnabled: 'bs_tts_enabled',
+  ttsStylePrompt: 'bs_tts_style_prompt',
   ttsVoiceUri: 'bs_tts_voice_uri',
   ttsGender: 'bs_tts_gender',
   ttsRate: 'bs_tts_rate',
@@ -62,6 +65,7 @@ const SETTINGS_KEYS = {
 export const useSettingsStore = create<SettingsState>((set) => ({
   uiLocale: pickStoredLocale(),
   ttsEnabled: boolFromStorage(SETTINGS_KEYS.ttsEnabled, false),
+  ttsStylePrompt: strFromStorage(SETTINGS_KEYS.ttsStylePrompt, ''),
   ttsVoiceUri: strFromStorage(SETTINGS_KEYS.ttsVoiceUri, ''),
   ttsGender: (strFromStorage(SETTINGS_KEYS.ttsGender, 'any') as TtsGenderPreference) || 'any',
   ttsRate: numFromStorage(SETTINGS_KEYS.ttsRate, 1),
@@ -82,6 +86,11 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setTtsEnabled: (enabled) => {
     if (typeof window !== 'undefined') window.localStorage.setItem(SETTINGS_KEYS.ttsEnabled, String(!!enabled))
     set({ ttsEnabled: !!enabled })
+  },
+  setTtsStylePrompt: (prompt) => {
+    const v = String(prompt ?? '').slice(0, 240)
+    if (typeof window !== 'undefined') window.localStorage.setItem(SETTINGS_KEYS.ttsStylePrompt, v)
+    set({ ttsStylePrompt: v })
   },
   setTtsVoiceUri: (voiceUri) => {
     if (typeof window !== 'undefined') window.localStorage.setItem(SETTINGS_KEYS.ttsVoiceUri, voiceUri)
