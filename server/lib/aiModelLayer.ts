@@ -248,24 +248,40 @@ const callGeminiGenerateContent = async ({
   model: string
   promptText: string
 }) => {
-  const url = `${baseUrl.replace(/\/$/, '')}/v1beta/models/${encodeURIComponent(model)}:generateContent`
-  const { resp, text } = await fetchWithTimeout(
-    url,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey,
+  const normalizedBase = baseUrl.replace(/\/$/, '')
+  const bodyFor = (apiVersion: 'v1' | 'v1beta') =>
+    JSON.stringify({
+      contents: [{ role: 'user', parts: [{ text: promptText }] }],
+      generationConfig:
+        apiVersion === 'v1beta'
+          ? { temperature: 0, responseMimeType: 'application/json' }
+          : {
+              temperature: 0,
+            },
+    })
+
+  const call = async (apiVersion: 'v1' | 'v1beta') => {
+    const url = `${normalizedBase}/${apiVersion}/models/${encodeURIComponent(model)}:generateContent`
+    const { resp, text } = await fetchWithTimeout(
+      url,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
+        },
+        body: bodyFor(apiVersion),
       },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: promptText }] }],
-        generationConfig: { temperature: 0, responseMimeType: 'application/json' },
-      }),
-    },
-    35_000,
-  )
-  const content = parseGeminiText(text)
-  return { status: resp.status, ok: resp.ok, raw: text, content }
+      35_000,
+    )
+    const content = parseGeminiText(text)
+    return { status: resp.status, ok: resp.ok, raw: text, content }
+  }
+
+  const primary = await call('v1beta')
+  if (primary.ok) return primary
+  if (primary.status === 404 || primary.status === 400) return await call('v1')
+  return primary
 }
 
 const callOpenAiChatCompletions = async ({

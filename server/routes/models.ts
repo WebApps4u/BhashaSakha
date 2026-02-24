@@ -68,7 +68,10 @@ router.get('/allowed', async (req: Request, res: Response) => {
     const supabase = adminClient()
     const allowed = await getAllowedModelsForUser(supabase as any, v.userId)
     const selected = await getUserSelectedModelId(supabase as any, v.userId)
-    res.status(200).json({ success: true, models: allowed, selected_model_id: selected })
+    const { data: planData } = await (supabase as any).rpc('get_user_plan', { uid: v.userId })
+    const planRow = Array.isArray(planData) ? (planData[0] as any) : (planData as any)
+    const planCode = typeof planRow?.plan_code === 'string' ? planRow.plan_code : 'free'
+    res.status(200).json({ success: true, models: allowed, selected_model_id: selected, plan_code: planCode })
   } catch (err) {
     res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Server error' })
   }

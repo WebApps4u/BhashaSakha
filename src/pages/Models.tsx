@@ -40,6 +40,7 @@ export default function Models() {
   const [models, setModels] = useState<AllowedModel[]>([])
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null)
   const [events, setEvents] = useState<UsageEvent[]>([])
+  const [planCode, setPlanCode] = useState<string>('free')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -75,6 +76,7 @@ export default function Models() {
     setModels((mJson.models ?? []) as AllowedModel[])
     setSelectedModelId((mJson.selected_model_id as string) ?? null)
     setEvents((uJson.events ?? []) as UsageEvent[])
+    setPlanCode(typeof mJson.plan_code === 'string' && mJson.plan_code ? mJson.plan_code : 'free')
     setLoading(false)
   }, [])
 
@@ -141,6 +143,7 @@ export default function Models() {
         <div className="mt-2 text-sm text-slate-700 dark:text-slate-200">
           {selected ? `${selected.display_name} (${selected.model_id})` : 'No model selected'}
         </div>
+        <div className="mt-1 text-xs text-slate-500 dark:text-slate-300">Subscription plan: {planCode}</div>
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-white/5">
@@ -152,22 +155,31 @@ export default function Models() {
           </div>
         ) : models.length ? (
           <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 dark:border-white/10">
-            <div className="grid grid-cols-[2fr_2fr_1fr_1fr_1fr] gap-3 bg-slate-50 px-4 py-2 text-xs font-semibold text-slate-600 dark:bg-white/5 dark:text-slate-300">
+            <div className="grid grid-cols-[2fr_2fr_2fr_1fr_1fr] gap-3 bg-slate-50 px-4 py-2 text-xs font-semibold text-slate-600 dark:bg-white/5 dark:text-slate-300">
               <div>Model</div>
               <div>ID</div>
-              <div className="text-right">Remaining</div>
+              <div>Remaining</div>
               <div>Resets</div>
               <div className="text-right">Action</div>
             </div>
             <div className="divide-y divide-slate-200 dark:divide-white/10">
               {models.map((m) => {
                 const isSelected = m.model_id === selectedModelId
-                const blocked = typeof m.remaining_requests === 'number' && m.remaining_requests <= 0
+                const blockedReq = typeof m.remaining_requests === 'number' && m.remaining_requests <= 0
+                const blockedIn = typeof m.remaining_input_units === 'number' && m.remaining_input_units <= 0
+                const blockedOut = typeof m.remaining_output_units === 'number' && m.remaining_output_units <= 0
+                const blocked = blockedReq || blockedIn || blockedOut
                 return (
-                  <div key={m.model_id} className="grid grid-cols-[2fr_2fr_1fr_1fr_1fr] items-center gap-3 px-4 py-3 text-sm">
+                  <div key={m.model_id} className="grid grid-cols-[2fr_2fr_2fr_1fr_1fr] items-center gap-3 px-4 py-3 text-sm">
                     <div className="font-medium text-slate-900 dark:text-slate-50">{m.display_name}</div>
                     <div className="text-slate-700 dark:text-slate-200">{m.model_id}</div>
-                    <div className="text-right text-slate-700 dark:text-slate-200">{formatRemaining(m.remaining_requests)}</div>
+                    <div className="text-slate-700 dark:text-slate-200">
+                      <div className="flex flex-wrap gap-x-3 gap-y-1">
+                        <span>req: {formatRemaining(m.remaining_requests)}</span>
+                        <span>in: {formatRemaining(m.remaining_input_units)}</span>
+                        <span>out: {formatRemaining(m.remaining_output_units)}</span>
+                      </div>
+                    </div>
                     <div className="text-slate-700 dark:text-slate-200">{m.resets_at ? new Date(m.resets_at).toLocaleString() : '-'}</div>
                     <div className="flex justify-end">
                       <button
@@ -234,4 +246,3 @@ export default function Models() {
     </div>
   )
 }
-
