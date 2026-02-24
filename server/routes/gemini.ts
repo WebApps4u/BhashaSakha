@@ -148,11 +148,11 @@ router.post('/test', async (req: Request, res: Response): Promise<void> => {
   const preferredModel =
     typeof process.env.GEMINI_MODEL_TRANSLATE === 'string' && process.env.GEMINI_MODEL_TRANSLATE.trim()
       ? process.env.GEMINI_MODEL_TRANSLATE.trim()
-      : 'gemini-2.0-flash'
+      : 'gemini-2.5-flash'
 
   try {
     const tried: string[] = []
-    const candidates = [preferredModel, 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-flash-latest', 'gemini-pro-latest']
+    const candidates = [preferredModel, 'gemini-2.5-flash', 'gemini-2.0-flash-001', 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-flash-latest', 'gemini-pro-latest']
 
     for (const model of candidates) {
       if (!model || tried.includes(model)) continue

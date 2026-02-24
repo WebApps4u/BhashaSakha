@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, LogIn, LogOut, Mic2, Moon, Settings, Sun, Gauge } from 'lucide-react'
+import { LayoutDashboard, LogIn, LogOut, Mic2, Moon, Settings, Sun, Gauge, Bot } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/authStore'
@@ -69,6 +69,7 @@ export default function AppShell() {
               <NavLink to="/live" label={t('nav.live')} icon={Mic2} />
               {user ? <NavLink to="/dashboard" label={t('nav.dashboard')} icon={LayoutDashboard} /> : null}
               {user ? <NavLink to="/usage" label="Usage" icon={Gauge} /> : null}
+              {user ? <NavLink to="/models" label="Models" icon={Bot} /> : null}
               {user ? <NavLink to="/account" label={t('nav.account')} icon={Settings} /> : null}
             </div>
           </div>

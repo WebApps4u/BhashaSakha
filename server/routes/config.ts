@@ -26,7 +26,7 @@ const listGenerateContentModels = async (apiKey: string) => {
 
 router.get('/', async (req: Request, res: Response): Promise<void> => {
   void req
-  const configuredModel = process.env.GEMINI_MODEL_TRANSLATE ?? 'gemini-2.0-flash'
+  const configuredModel = process.env.GEMINI_MODEL_TRANSLATE ?? 'gemini-2.5-flash'
   const googleKey = process.env.GOOGLE_API_KEY
   const enableDiagnostics = (process.env.ENABLE_GEMINI_DIAGNOSTICS ?? '').toLowerCase() === 'true' || process.env.NODE_ENV !== 'production'
 

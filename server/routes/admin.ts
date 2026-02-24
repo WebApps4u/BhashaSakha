@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express'
 import { createClient } from '@supabase/supabase-js'
+import { encryptSecret } from '../lib/cryptoVault.js'
 
 const router = Router()
 
@@ -109,6 +110,20 @@ const audit = async ({
   }
 }
 
+const requireAdmin = async (req: Request, res: Response) => {
+  const v = await verifyUser(req)
+  if (!v.ok) {
+    jsonError(res, v.status, v.error)
+    return { ok: false as const }
+  }
+  const allowed = await isAdmin({ userId: v.userId, token: v.token })
+  if (!allowed) {
+    jsonError(res, 403, 'Forbidden')
+    return { ok: false as const }
+  }
+  return { ok: true as const, userId: v.userId, token: v.token }
+}
+
 const monthKeyUtc = (d = new Date()) => {
   const y = d.getUTCFullYear()
   const m = d.getUTCMonth() + 1
@@ -161,6 +176,420 @@ router.get('/me', async (req: Request, res: Response): Promise<void> => {
     const permissions = Array.from(new Set((permRows ?? []).map((x: any) => x.key).filter(Boolean)))
 
     res.status(200).json({ success: true, user_id: v.userId, roles, permissions })
+  } catch (err) {
+    jsonError(res, 500, err instanceof Error ? err.message : 'Server error')
+  }
+})
+
+router.get('/ai/providers', async (req: Request, res: Response) => {
+  try {
+    const a = await requireAdmin(req, res)
+    if (!a.ok) return
+    const supabase = adminClient()
+    const { data, error } = await supabase.from('ai_providers').select('id,key,name,base_url,auth_type,status,created_at,updated_at').order('name')
+    if (error) return jsonError(res, 500, error.message)
+    res.status(200).json({ success: true, providers: data ?? [] })
+  } catch (err) {
+    jsonError(res, 500, err instanceof Error ? err.message : 'Server error')
+  }
+})
+
+router.post('/ai/providers', async (req: Request, res: Response) => {
+  try {
+    const a = await requireAdmin(req, res)
+    if (!a.ok) return
+    const body = (req.body ?? {}) as any
+    const id = typeof body.id === 'string' ? body.id : null
+    const key = typeof body.key === 'string' ? body.key.trim() : ''
+    const name = typeof body.name === 'string' ? body.name.trim() : ''
+    const baseUrl = typeof body.base_url === 'string' ? body.base_url.trim() : null
+    const authType = typeof body.auth_type === 'string' ? body.auth_type.trim() : ''
+    const status = typeof body.status === 'string' ? body.status.trim() : 'active'
+
+    if (!key || !name || !authType) return jsonError(res, 400, 'key, name, and auth_type are required')
+    const supabase = adminClient()
+    const payload: any = { key, name, base_url: baseUrl, auth_type: authType, status }
+
+    const q = id ? supabase.from('ai_providers').update(payload).eq('id', id).select('id').maybeSingle() : supabase.from('ai_providers').upsert(payload, { onConflict: 'key' }).select('id').maybeSingle()
+    const { data, error } = await q
+    if (error) return jsonError(res, 500, error.message)
+    await audit({ actorId: a.userId, token: a.token, action: 'upsert', entityType: 'ai_provider', entityId: (data as any)?.id, meta: { key } })
+    res.status(200).json({ success: true })
+  } catch (err) {
+    jsonError(res, 500, err instanceof Error ? err.message : 'Server error')
+  }
+})
+
+router.get('/ai/provider-keys', async (req: Request, res: Response) => {
+  try {
+    const a = await requireAdmin(req, res)
+    if (!a.ok) return
+    const providerId = typeof req.query.provider_id === 'string' ? String(req.query.provider_id) : ''
+    if (!providerId) return jsonError(res, 400, 'provider_id is required')
+    const supabase = adminClient()
+    const { data, error } = await supabase
+      .from('ai_provider_keys')
+      .select('id,provider_id,label,status,priority,created_at,updated_at,last_used_at,last_error_at')
+      .eq('provider_id', providerId)
+      .order('priority', { ascending: false })
+    if (error) return jsonError(res, 500, error.message)
+    res.status(200).json({ success: true, keys: data ?? [] })
+  } catch (err) {
+    jsonError(res, 500, err instanceof Error ? err.message : 'Server error')
+  }
+})
+
+router.post('/ai/provider-keys', async (req: Request, res: Response) => {
+  try {
+    const a = await requireAdmin(req, res)
+    if (!a.ok) return
+    const body = (req.body ?? {}) as any
+    const providerId = typeof body.provider_id === 'string' ? body.provider_id : ''
+    const label = typeof body.label === 'string' ? body.label.trim() : ''
+    const key = typeof body.key === 'string' ? body.key.trim() : ''
+    const priority = Number.isFinite(Number(body.priority)) ? Math.trunc(Number(body.priority)) : 100
+    const status = typeof body.status === 'string' ? body.status.trim() : 'active'
+
+    if (!providerId || !label || !key) return jsonError(res, 400, 'provider_id, label, and key are required')
+    const supabase = adminClient()
+    const { data, error } = await supabase
+      .from('ai_provider_keys')
+      .insert({ provider_id: providerId, label, key_ciphertext: encryptSecret(key), status, priority })
+      .select('id')
+      .single()
+    if (error) return jsonError(res, 500, error.message)
+    await audit({ actorId: a.userId, token: a.token, action: 'create', entityType: 'ai_provider_key', entityId: (data as any)?.id, meta: { provider_id: providerId, label } })
+    res.status(200).json({ success: true })
+  } catch (err) {
+    jsonError(res, 500, err instanceof Error ? err.message : 'Server error')
+  }
+})
+
+router.put('/ai/provider-keys/:id', async (req: Request, res: Response) => {
+  try {
+    const a = await requireAdmin(req, res)
+    if (!a.ok) return
+    const id = String(req.params.id)
+    const body = (req.body ?? {}) as any
+    const label = typeof body.label === 'string' ? body.label.trim() : undefined
+    const priority = body.priority !== undefined ? (Number.isFinite(Number(body.priority)) ? Math.trunc(Number(body.priority)) : 100) : undefined
+    const status = typeof body.status === 'string' ? body.status.trim() : undefined
+    const key = typeof body.key === 'string' ? body.key.trim() : undefined
+
+    const patch: any = {}
+    if (label !== undefined) patch.label = label
+    if (priority !== undefined) patch.priority = priority
+    if (status !== undefined) patch.status = status
+    if (key !== undefined && key) patch.key_ciphertext = encryptSecret(key)
+    if (!Object.keys(patch).length) return jsonError(res, 400, 'No fields to update')
+
+    const supabase = adminClient()
+    const { error } = await supabase.from('ai_provider_keys').update(patch).eq('id', id)
+    if (error) return jsonError(res, 500, error.message)
+    await audit({ actorId: a.userId, token: a.token, action: 'update', entityType: 'ai_provider_key', entityId: id, meta: { fields: Object.keys(patch) } })
+    res.status(200).json({ success: true })
+  } catch (err) {
+    jsonError(res, 500, err instanceof Error ? err.message : 'Server error')
+  }
+})
+
+router.delete('/ai/provider-keys/:id', async (req: Request, res: Response) => {
+  try {
+    const a = await requireAdmin(req, res)
+    if (!a.ok) return
+    const id = String(req.params.id)
+    const supabase = adminClient()
+    const { error } = await supabase.from('ai_provider_keys').update({ status: 'disabled', updated_at: new Date().toISOString() }).eq('id', id)
+    if (error) return jsonError(res, 500, error.message)
+    await audit({ actorId: a.userId, token: a.token, action: 'delete', entityType: 'ai_provider_key', entityId: id, meta: {} })
+    res.status(200).json({ success: true })
+  } catch (err) {
+    jsonError(res, 500, err instanceof Error ? err.message : 'Server error')
+  }
+})
+
+router.get('/ai/models', async (req: Request, res: Response) => {
+  try {
+    const a = await requireAdmin(req, res)
+    if (!a.ok) return
+    const supabase = adminClient()
+    const { data, error } = await supabase
+      .from('ai_models')
+      .select('id,model_id,display_name,modality,status,created_at,updated_at')
+      .neq('status', 'disabled')
+      .order('display_name')
+    if (error) return jsonError(res, 500, error.message)
+    res.status(200).json({ success: true, models: data ?? [] })
+  } catch (err) {
+    jsonError(res, 500, err instanceof Error ? err.message : 'Server error')
+  }
+})
+
+router.post('/ai/models', async (req: Request, res: Response) => {
+  try {
+    const a = await requireAdmin(req, res)
+    if (!a.ok) return
+    const body = (req.body ?? {}) as any
+    const id = typeof body.id === 'string' ? body.id : null
+    const modelIdRaw = typeof body.model_id === 'string' ? body.model_id.trim() : ''
+    const modelId = modelIdRaw.replace(/-/g, '_')
+    const displayName = typeof body.display_name === 'string' ? body.display_name.trim() : ''
+    const modality = typeof body.modality === 'string' ? body.modality.trim() : 'text'
+    const status = typeof body.status === 'string' ? body.status.trim() : 'active'
+    if (!modelId || !displayName) return jsonError(res, 400, 'model_id and display_name are required')
+    const supabase = adminClient()
+    const payload: any = { model_id: modelId, display_name: displayName, modality, status }
+    const q = id ? supabase.from('ai_models').update(payload).eq('id', id).select('id').maybeSingle() : supabase.from('ai_models').upsert(payload, { onConflict: 'model_id' }).select('id').maybeSingle()
+    const { data, error } = await q
+    if (error) return jsonError(res, 500, error.message)
+    await audit({ actorId: a.userId, token: a.token, action: 'upsert', entityType: 'ai_model', entityId: (data as any)?.id, meta: { model_id: modelId } })
+    res.status(200).json({ success: true })
+  } catch (err) {
+    jsonError(res, 500, err instanceof Error ? err.message : 'Server error')
+  }
+})
+
+router.delete('/ai/models/:id', async (req: Request, res: Response) => {
+  try {
+    const a = await requireAdmin(req, res)
+    if (!a.ok) return
+    const id = String(req.params.id)
+    const supabase = adminClient()
+    const { error } = await supabase.from('ai_models').update({ status: 'disabled', updated_at: new Date().toISOString() }).eq('id', id)
+    if (error) return jsonError(res, 500, error.message)
+    await audit({ actorId: a.userId, token: a.token, action: 'delete', entityType: 'ai_model', entityId: id, meta: {} })
+    res.status(200).json({ success: true })
+  } catch (err) {
+    jsonError(res, 500, err instanceof Error ? err.message : 'Server error')
+  }
+})
+
+router.get('/ai/model-mappings', async (req: Request, res: Response) => {
+  try {
+    const a = await requireAdmin(req, res)
+    if (!a.ok) return
+    const modelPk = typeof req.query.model_pk === 'string' ? String(req.query.model_pk) : ''
+    if (!modelPk) return jsonError(res, 400, 'model_pk is required')
+    const supabase = adminClient()
+    const { data, error } = await supabase
+      .from('ai_model_mappings')
+      .select('id,model_pk,provider_id,provider_model_name,status,created_at')
+      .eq('model_pk', modelPk)
+      .neq('status', 'disabled')
+      .order('created_at', { ascending: false })
+    if (error) return jsonError(res, 500, error.message)
+    res.status(200).json({ success: true, mappings: data ?? [] })
+  } catch (err) {
+    jsonError(res, 500, err instanceof Error ? err.message : 'Server error')
+  }
+})
+
+router.delete('/ai/model-mappings/:id', async (req: Request, res: Response) => {
+  try {
+    const a = await requireAdmin(req, res)
+    if (!a.ok) return
+    const id = String(req.params.id)
+    const supabase = adminClient()
+    const { error } = await supabase.from('ai_model_mappings').update({ status: 'disabled' }).eq('id', id)
+    if (error) return jsonError(res, 500, error.message)
+    await audit({ actorId: a.userId, token: a.token, action: 'delete', entityType: 'ai_model_mapping', entityId: id, meta: {} })
+    res.status(200).json({ success: true })
+  } catch (err) {
+    jsonError(res, 500, err instanceof Error ? err.message : 'Server error')
+  }
+})
+
+router.post('/ai/model-mappings', async (req: Request, res: Response) => {
+  try {
+    const a = await requireAdmin(req, res)
+    if (!a.ok) return
+    const body = (req.body ?? {}) as any
+    const id = typeof body.id === 'string' ? body.id : null
+    const modelPk = typeof body.model_pk === 'string' ? body.model_pk : ''
+    const providerId = typeof body.provider_id === 'string' ? body.provider_id : ''
+    const providerModelName = typeof body.provider_model_name === 'string' ? body.provider_model_name.trim() : ''
+    const status = typeof body.status === 'string' ? body.status.trim() : 'active'
+    if (!modelPk || !providerId || !providerModelName) return jsonError(res, 400, 'model_pk, provider_id, and provider_model_name are required')
+    const supabase = adminClient()
+    if (id) {
+      const { error } = await supabase
+        .from('ai_model_mappings')
+        .update({ model_pk: modelPk, provider_id: providerId, provider_model_name: providerModelName, status })
+        .eq('id', id)
+      if (error) return jsonError(res, 500, error.message)
+      await audit({ actorId: a.userId, token: a.token, action: 'update', entityType: 'ai_model_mapping', entityId: id })
+      res.status(200).json({ success: true })
+      return
+    }
+    const { data, error } = await supabase
+      .from('ai_model_mappings')
+      .insert({ model_pk: modelPk, provider_id: providerId, provider_model_name: providerModelName, status })
+      .select('id')
+      .single()
+    if (error) return jsonError(res, 500, error.message)
+    await audit({ actorId: a.userId, token: a.token, action: 'create', entityType: 'ai_model_mapping', entityId: (data as any)?.id })
+    res.status(200).json({ success: true })
+  } catch (err) {
+    jsonError(res, 500, err instanceof Error ? err.message : 'Server error')
+  }
+})
+
+router.get('/ai/routing-policies', async (req: Request, res: Response) => {
+  try {
+    const a = await requireAdmin(req, res)
+    if (!a.ok) return
+    const supabase = adminClient()
+    const { data, error } = await supabase.from('ai_routing_policies').select('id,model_pk,status,policy,created_at,updated_at').order('updated_at', { ascending: false })
+    if (error) return jsonError(res, 500, error.message)
+    res.status(200).json({ success: true, policies: data ?? [] })
+  } catch (err) {
+    jsonError(res, 500, err instanceof Error ? err.message : 'Server error')
+  }
+})
+
+router.post('/ai/routing-policies', async (req: Request, res: Response) => {
+  try {
+    const a = await requireAdmin(req, res)
+    if (!a.ok) return
+    const body = (req.body ?? {}) as any
+    const modelPk = typeof body.model_pk === 'string' ? body.model_pk : ''
+    const status = typeof body.status === 'string' ? body.status.trim() : 'active'
+    const policy = body.policy ?? {}
+    if (!modelPk) return jsonError(res, 400, 'model_pk is required')
+    const supabase = adminClient()
+    const { data, error } = await supabase
+      .from('ai_routing_policies')
+      .upsert({ model_pk: modelPk, status, policy }, { onConflict: 'model_pk' })
+      .select('id')
+      .single()
+    if (error) return jsonError(res, 500, error.message)
+    await audit({ actorId: a.userId, token: a.token, action: 'upsert', entityType: 'ai_routing_policy', entityId: (data as any)?.id, meta: { model_pk: modelPk } })
+    res.status(200).json({ success: true })
+  } catch (err) {
+    jsonError(res, 500, err instanceof Error ? err.message : 'Server error')
+  }
+})
+
+router.get('/ai/plans-matrix', async (req: Request, res: Response) => {
+  try {
+    const a = await requireAdmin(req, res)
+    if (!a.ok) return
+    const supabase = adminClient()
+    const [{ data: plans }, { data: models }, { data: entitlements }] = await Promise.all([
+      supabase.from('subscription_plans').select('code,name,is_active').order('code'),
+      supabase.from('ai_models').select('id,model_id,display_name,modality,status').neq('status', 'disabled').order('display_name'),
+      supabase.from('ai_plan_entitlements').select('id,plan_code,model_pk,is_enabled,monthly_request_limit,monthly_input_unit_limit,monthly_output_unit_limit,updated_at'),
+    ])
+    res.status(200).json({ success: true, plans: plans ?? [], models: models ?? [], entitlements: entitlements ?? [] })
+  } catch (err) {
+    jsonError(res, 500, err instanceof Error ? err.message : 'Server error')
+  }
+})
+
+router.post('/ai/plan-entitlements', async (req: Request, res: Response) => {
+  try {
+    const a = await requireAdmin(req, res)
+    if (!a.ok) return
+    const body = (req.body ?? {}) as any
+    const planCode = typeof body.plan_code === 'string' ? body.plan_code.trim() : ''
+    const modelPk = typeof body.model_pk === 'string' ? body.model_pk : ''
+    const isEnabled = body.is_enabled === undefined ? true : Boolean(body.is_enabled)
+    const reqLimit = Number.isFinite(Number(body.monthly_request_limit)) ? Math.max(0, Math.trunc(Number(body.monthly_request_limit))) : 0
+    const inLimit = Number.isFinite(Number(body.monthly_input_unit_limit)) ? Math.max(0, Math.trunc(Number(body.monthly_input_unit_limit))) : 0
+    const outLimit = Number.isFinite(Number(body.monthly_output_unit_limit)) ? Math.max(0, Math.trunc(Number(body.monthly_output_unit_limit))) : 0
+    if (!planCode || !modelPk) return jsonError(res, 400, 'plan_code and model_pk are required')
+    const supabase = adminClient()
+    const { data, error } = await supabase
+      .from('ai_plan_entitlements')
+      .upsert(
+        {
+          plan_code: planCode,
+          model_pk: modelPk,
+          is_enabled: isEnabled,
+          monthly_request_limit: reqLimit,
+          monthly_input_unit_limit: inLimit,
+          monthly_output_unit_limit: outLimit,
+        },
+        { onConflict: 'plan_code,model_pk' },
+      )
+      .select('id')
+      .single()
+    if (error) return jsonError(res, 500, error.message)
+    await audit({ actorId: a.userId, token: a.token, action: 'upsert', entityType: 'ai_plan_entitlement', entityId: (data as any)?.id, meta: { plan_code: planCode, model_pk: modelPk } })
+    res.status(200).json({ success: true })
+  } catch (err) {
+    jsonError(res, 500, err instanceof Error ? err.message : 'Server error')
+  }
+})
+
+router.get('/ai/user-overrides', async (req: Request, res: Response) => {
+  try {
+    const a = await requireAdmin(req, res)
+    if (!a.ok) return
+    const userId = typeof req.query.user_id === 'string' ? String(req.query.user_id) : ''
+    if (!userId) return jsonError(res, 400, 'user_id is required')
+    const supabase = adminClient()
+    const { data, error } = await supabase
+      .from('ai_user_overrides')
+      .select('id,user_id,model_pk,override_enabled,override_monthly_request_limit,override_monthly_input_unit_limit,override_monthly_output_unit_limit,updated_at')
+      .eq('user_id', userId)
+    if (error) return jsonError(res, 500, error.message)
+    res.status(200).json({ success: true, overrides: data ?? [] })
+  } catch (err) {
+    jsonError(res, 500, err instanceof Error ? err.message : 'Server error')
+  }
+})
+
+router.post('/ai/user-overrides', async (req: Request, res: Response) => {
+  try {
+    const a = await requireAdmin(req, res)
+    if (!a.ok) return
+    const body = (req.body ?? {}) as any
+    const userId = typeof body.user_id === 'string' ? body.user_id : ''
+    const modelPk = typeof body.model_pk === 'string' ? body.model_pk : ''
+    if (!userId || !modelPk) return jsonError(res, 400, 'user_id and model_pk are required')
+
+    const patch: any = { user_id: userId, model_pk: modelPk }
+    if (body.override_enabled !== undefined) patch.override_enabled = body.override_enabled === null ? null : Boolean(body.override_enabled)
+    if (body.override_monthly_request_limit !== undefined)
+      patch.override_monthly_request_limit = body.override_monthly_request_limit === null ? null : Math.max(0, Math.trunc(Number(body.override_monthly_request_limit) || 0))
+    if (body.override_monthly_input_unit_limit !== undefined)
+      patch.override_monthly_input_unit_limit = body.override_monthly_input_unit_limit === null ? null : Math.max(0, Math.trunc(Number(body.override_monthly_input_unit_limit) || 0))
+    if (body.override_monthly_output_unit_limit !== undefined)
+      patch.override_monthly_output_unit_limit = body.override_monthly_output_unit_limit === null ? null : Math.max(0, Math.trunc(Number(body.override_monthly_output_unit_limit) || 0))
+
+    const supabase = adminClient()
+    const { data, error } = await supabase
+      .from('ai_user_overrides')
+      .upsert(patch, { onConflict: 'user_id,model_pk' })
+      .select('id')
+      .single()
+    if (error) return jsonError(res, 500, error.message)
+    await audit({ actorId: a.userId, token: a.token, action: 'upsert', entityType: 'ai_user_override', entityId: (data as any)?.id, meta: { user_id: userId, model_pk: modelPk } })
+    res.status(200).json({ success: true })
+  } catch (err) {
+    jsonError(res, 500, err instanceof Error ? err.message : 'Server error')
+  }
+})
+
+router.get('/ai/usage', async (req: Request, res: Response) => {
+  try {
+    const a = await requireAdmin(req, res)
+    if (!a.ok) return
+    const userId = typeof req.query.user_id === 'string' ? String(req.query.user_id) : null
+    const status = typeof req.query.status === 'string' ? String(req.query.status) : null
+    const limit = Math.min(500, Math.max(1, Number(req.query.limit ?? 100) || 100))
+    const supabase = adminClient()
+    let q = supabase
+      .from('ai_usage_events')
+      .select('id,created_at,user_id,status,error_code,used_fallback,downgraded,input_units,output_units,model_pk_requested,model_pk_used,provider_id_used,provider_key_id_used')
+      .order('created_at', { ascending: false })
+      .limit(limit)
+    if (userId) q = q.eq('user_id', userId)
+    if (status) q = q.eq('status', status)
+    const { data, error } = await q
+    if (error) return jsonError(res, 500, error.message)
+    res.status(200).json({ success: true, events: data ?? [] })
   } catch (err) {
     jsonError(res, 500, err instanceof Error ? err.message : 'Server error')
   }

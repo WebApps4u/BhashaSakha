@@ -7,6 +7,7 @@ import SharedSession from '@/pages/SharedSession'
 import Live from '@/pages/Live'
 import Account from '@/pages/Account'
 import Usage from '@/pages/Usage'
+import Models from '@/pages/Models'
 import AdminShell from '@/components/admin/AdminShell'
 import AdminHome from '@/pages/admin/AdminHome'
 import AdminUsers from '@/pages/admin/AdminUsers'
@@ -15,6 +16,10 @@ import AdminFlags from '@/pages/admin/AdminFlags'
 import AdminLogs from '@/pages/admin/AdminLogs'
 import AdminPlans from '@/pages/admin/AdminPlans'
 import AdminUsage from '@/pages/admin/AdminUsage'
+import AdminAIProviders from '@/pages/admin/AdminAIProviders'
+import AdminAIModels from '@/pages/admin/AdminAIModels'
+import AdminAIRouting from '@/pages/admin/AdminAIRouting'
+import AdminAIEntitlements from '@/pages/admin/AdminAIEntitlements'
 import Setup from '@/pages/Setup'
 import { isSupabaseConfigured, supabaseConfigError } from '@/lib/supabaseClient'
 
@@ -39,6 +44,10 @@ export default function App() {
           <Route path="users" element={<AdminUsers />} />
           <Route path="plans" element={<AdminPlans />} />
           <Route path="usage" element={<AdminUsage />} />
+          <Route path="ai/providers" element={<AdminAIProviders />} />
+          <Route path="ai/models" element={<AdminAIModels />} />
+          <Route path="ai/routing" element={<AdminAIRouting />} />
+          <Route path="ai/entitlements" element={<AdminAIEntitlements />} />
           <Route path="settings" element={<AdminSettings />} />
           <Route path="flags" element={<AdminFlags />} />
           <Route path="logs" element={<AdminLogs />} />
@@ -50,6 +59,7 @@ export default function App() {
           <Route path="/login" element={<Auth />} />
           <Route path="/account" element={<Account />} />
           <Route path="/usage" element={<Usage />} />
+          <Route path="/models" element={<Models />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/session/:sessionId" element={<Session />} />
           <Route path="/s/:shareId" element={<SharedSession />} />

@@ -18,6 +18,8 @@ import configRoutes from './routes/config.js'
 import geminiRoutes from './routes/gemini.js'
 import adminRoutes from './routes/admin.js'
 import subscriptionRoutes from './routes/subscriptions.js'
+import modelRequestRoutes from './routes/modelRequest.js'
+import modelsRoutes from './routes/models.js'
 
 // load env
 dotenv.config()
@@ -56,6 +58,8 @@ app.use('/api/config', configRoutes)
 app.use('/api/gemini', geminiRoutes)
 app.use('/api/admin', adminRoutes)
 app.use('/api/subscriptions', subscriptionRoutes)
+app.use('/api/model-request', modelRequestRoutes)
+app.use('/api/models', modelsRoutes)
 
 /**
  * health

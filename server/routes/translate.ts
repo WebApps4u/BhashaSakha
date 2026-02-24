@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express'
 import { createClient } from '@supabase/supabase-js'
+import { resolveRequestedModelId, runModelRequest } from '../lib/aiModelLayer.js'
 
 type TranslateRequestBody = {
   text?: unknown
@@ -13,8 +14,6 @@ type TranslateResponseBody = {
 
 const router = Router()
 
-const getGoogleApiKey = () => process.env.GOOGLE_API_KEY ?? ''
-const getGeminiModel = () => process.env.GEMINI_MODEL_TRANSLATE ?? 'gemini-2.0-flash'
 const getSupabaseUrl = () => process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? ''
 const getSupabaseAnonKey = () => process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY ?? ''
 const getSupabaseServiceRoleKey = () => process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
@@ -34,114 +33,20 @@ const parseBody = (body: TranslateRequestBody) => {
   return { text, targets: Array.from(new Set(targets)) }
 }
 
-const modelFallbacks = (model: string) => {
-  const trimmed = model.trim()
-  const fallbacks = new Set<string>()
-  if (trimmed) fallbacks.add(trimmed)
-
-  const add = (m: string) => {
-    if (m) fallbacks.add(m)
-  }
-
-  add('gemini-3-flash-preview')
-  add('gemini-2.5-flash')
-  add('gemini-2.5-pro')
-  add('gemini-2.0-flash')
-  add('gemini-2.0-pro')
-  add('gemini-1.5-flash')
-  add('gemini-1.5-pro')
-
-  if (!trimmed.includes('-latest') && !/\d{3}$/.test(trimmed)) {
-    add(`${trimmed}-latest`)
-  }
-  if (trimmed === 'gemini-1.5-pro') add('gemini-1.5-pro-latest')
-  if (trimmed === 'gemini-1.5-flash') add('gemini-1.5-flash-latest')
-  if (trimmed === 'gemini-2.0-flash') add('gemini-2.0-flash-001')
-  if (trimmed === 'gemini-2.0-pro') add('gemini-2.0-pro-001')
-  if (trimmed === 'gemini-1.5-flash') add('gemini-1.5-flash-001')
-  if (trimmed === 'gemini-1.5-pro') add('gemini-1.5-pro-001')
-
-  return Array.from(fallbacks)
-}
-
-const geminiGenerate = async ({
-  apiKey,
-  model,
-  promptText,
-}: {
-  apiKey: string
-  model: string
-  promptText: string
-}) => {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': apiKey,
-    },
-    body: JSON.stringify({
-      contents: [
-        {
-          role: 'user',
-          parts: [{ text: promptText }],
-        },
-      ],
-      generationConfig: {
-        temperature: 0,
-        responseMimeType: 'application/json',
-      },
-    }),
-  })
-
-  const bodyText = await response.text().catch(() => '')
-  return { response, bodyText }
-}
-
-const listGeminiModels = async (apiKey: string) => {
-  const url = 'https://generativelanguage.googleapis.com/v1beta/models'
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'x-goog-api-key': apiKey,
-    },
-  })
-  const bodyText = await response.text().catch(() => '')
-  if (!response.ok) return { ok: false as const, bodyText }
-
+const extractJsonObject = (text: string) => {
+  const trimmed = text.trim()
+  if (!trimmed) return null
   try {
-    const data = JSON.parse(bodyText) as {
-      models?: Array<{
-        name?: string
-        baseModelId?: string
-        supportedGenerationMethods?: string[]
-      }>
-    }
-    const models = (data.models ?? [])
-      .filter((m) => (m.supportedGenerationMethods ?? []).includes('generateContent'))
-      .map((m) => m.baseModelId || (m.name?.startsWith('models/') ? m.name.slice('models/'.length) : m.name) || '')
-      .filter(Boolean)
-    return { ok: true as const, models }
+    return JSON.parse(trimmed)
   } catch {
-    return { ok: false as const, bodyText }
+    const match = trimmed.match(/\{[\s\S]*\}/)
+    if (!match) return null
+    try {
+      return JSON.parse(match[0])
+    } catch {
+      return null
+    }
   }
-}
-
-const pickBestModel = (models: string[]) => {
-  const preferred = [
-    'gemini-3-flash-preview',
-    'gemini-2.5-flash',
-    'gemini-2.5-pro',
-    'gemini-2.0-flash',
-    'gemini-2.0-pro',
-    'gemini-1.5-flash',
-    'gemini-1.5-pro',
-  ]
-  for (const p of preferred) {
-    const found = models.find((m) => m === p || m.startsWith(`${p}-`))
-    if (found) return found
-  }
-  return models[0] ?? ''
 }
 
 const parseBearer = (req: Request) => {
@@ -278,17 +183,6 @@ const takeTokens = ({ key, refillPerMin, burst, cost }: { key: string; refillPer
 
 router.post('/', async (req: Request, res: Response): Promise<void> => {
   try {
-    const GOOGLE_API_KEY = getGoogleApiKey()
-    const GEMINI_MODEL = getGeminiModel()
-
-    if (!GOOGLE_API_KEY) {
-      res.status(500).json({
-        success: false,
-        error: 'Missing GOOGLE_API_KEY on the server.',
-      })
-      return
-    }
-
     const v = await verifyUser(req)
     if (!v.ok) {
       res.status(v.status).json({ success: false, error: v.error })
@@ -391,82 +285,44 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
     const promptText =
       prompt + '\n\nINPUT: ' + JSON.stringify({ text, targets }) + '\n\nOUTPUT JSON:'
 
-    let lastStatus = 0
-    let lastDetails = ''
-    let successBodyText = ''
-    const triedModels: string[] = []
+    if (!supabaseAdmin || !v.userId) {
+      res.status(500).json({ success: false, error: 'Supabase service client is not configured on the server' })
+      return
+    }
 
-    for (const model of modelFallbacks(GEMINI_MODEL)) {
-      triedModels.push(model)
-      const { response, bodyText } = await geminiGenerate({
-        apiKey: GOOGLE_API_KEY,
-        model,
+    const requestedModelId = typeof (req.body as any)?.model_id === 'string' ? String((req.body as any).model_id).trim() : null
+    const resolved = await resolveRequestedModelId({ supabase: supabaseAdmin as any, userId: v.userId, requestedModelId })
+
+    const inputUnits = promptText.length
+    let modelResult: Awaited<ReturnType<typeof runModelRequest>>
+    try {
+      modelResult = await runModelRequest({
+        supabase: supabaseAdmin as any,
+        userId: v.userId,
+        requestedModelId: resolved.effective,
         promptText,
+        unitCounts: { inputUnits, outputUnits: 0 },
       })
-
-      if (response.ok) {
-        successBodyText = bodyText
-        break
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Model request failed'
+      if (message === 'quota_exceeded') {
+        res.status(429).json({ success: false, error: 'Model quota exceeded', code: 'quota_exceeded' })
+        return
       }
-
-      lastStatus = response.status
-      lastDetails = bodyText
-
-      if (response.status !== 404) {
-        break
-      }
-    }
-
-    if (!successBodyText && lastStatus === 404) {
-      const listed = await listGeminiModels(GOOGLE_API_KEY)
-      if (listed.ok && listed.models.length) {
-        const best = pickBestModel(listed.models)
-        if (best && !triedModels.includes(best)) {
-          triedModels.push(best)
-          const { response, bodyText } = await geminiGenerate({
-            apiKey: GOOGLE_API_KEY,
-            model: best,
-            promptText,
-          })
-          if (response.ok) {
-            successBodyText = bodyText
-          } else {
-            lastStatus = response.status
-            lastDetails = bodyText
-          }
-        }
-      }
-    }
-
-    if (!successBodyText) {
-      res.status(502).json({
+      const status = err && typeof (err as any).httpStatus === 'number' ? (err as any).httpStatus : 502
+      res.status(status).json({
         success: false,
-        error: `Gemini error (${lastStatus || 500})`,
-        details: lastDetails.slice(0, 1000),
-        tried_models: triedModels,
+        error: message,
+        details: (err as any)?.details ? String((err as any).details).slice(0, 1000) : undefined,
       })
       return
     }
 
-    let parsed: TranslateResponseBody | null = null
-    try {
-      const maybeJson = JSON.parse(successBodyText) as {
-        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
-      }
-      const content = maybeJson.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
-
-      try {
-        parsed = JSON.parse(content) as TranslateResponseBody
-      } catch {
-        const match = content.match(/\{[\s\S]*\}/)
-        parsed = match ? (JSON.parse(match[0]) as TranslateResponseBody) : null
-      }
-    } catch {
-      parsed = null
-    }
+    const jsonFromModel = modelResult.output_json ?? extractJsonObject(modelResult.output_text)
+    const parsed = (jsonFromModel ?? null) as TranslateResponseBody | null
 
     if (!parsed) {
-      res.status(502).json({ success: false, error: 'Invalid JSON from Gemini' })
+      res.status(502).json({ success: false, error: 'Invalid JSON from model provider' })
       return
     }
 
@@ -525,6 +381,13 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
       detected_language,
       translations,
       meter: meterInfo,
+      model: {
+        requested: modelResult.requested_model_id,
+        used: modelResult.used_model_id,
+        provider: modelResult.provider_key,
+        used_fallback: modelResult.used_fallback,
+        downgraded: modelResult.downgraded,
+      },
     })
   } catch (err) {
     res.status(500).json({
