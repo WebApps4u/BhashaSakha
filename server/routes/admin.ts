@@ -914,7 +914,60 @@ router.get('/users', async (req: Request, res: Response): Promise<void> => {
       roles: roleMap.get(p.id) ?? [],
     }))
 
-    res.status(200).json({ success: true, users, page, per_page: perPage, source: 'profiles' })
+    const planRows = await Promise.all(
+      users.map(async (u) => {
+        try {
+          const { data } = await supabase.rpc('get_user_plan', { uid: u.id })
+          const row = Array.isArray(data) ? (data[0] as any) : (data as any)
+          return { userId: u.id, plan_code: row?.plan_code ?? 'free' }
+        } catch {
+          return { userId: u.id, plan_code: 'free' }
+        }
+      }),
+    )
+    const planByUserId = new Map(planRows.map((r) => [r.userId, r.plan_code]))
+    const usersWithPlan = users.map((u) => ({ ...u, plan_code: planByUserId.get(u.id) ?? 'free' }))
+
+    res.status(200).json({ success: true, users: usersWithPlan, page, per_page: perPage, source: 'profiles' })
+  } catch (err) {
+    jsonError(res, 500, err instanceof Error ? err.message : 'Server error')
+  }
+})
+
+router.delete('/subscriptions/plans/:code', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const v = await verifyUser(req)
+    if (!v.ok) {
+      jsonError(res, v.status, v.error)
+      return
+    }
+    if (!(await isAdmin({ userId: v.userId, token: v.token }))) {
+      jsonError(res, 403, 'Forbidden')
+      return
+    }
+
+    const code = String(req.params.code ?? '')
+      .trim()
+      .toLowerCase()
+    if (!code) {
+      jsonError(res, 400, 'code is required')
+      return
+    }
+
+    const supabase = adminClient()
+    const { error } = await supabase.from('subscription_plans').update({ is_active: false }).eq('code', code)
+    if (error) {
+      jsonError(res, 500, error.message)
+      return
+    }
+    await supabase.from('admin_audit_log').insert({
+      actor_user_id: v.userId,
+      action: 'subscriptions.plan.delete',
+      target_type: 'subscription_plans',
+      target_id: code,
+      details: { code },
+    })
+    res.status(200).json({ success: true })
   } catch (err) {
     jsonError(res, 500, err instanceof Error ? err.message : 'Server error')
   }

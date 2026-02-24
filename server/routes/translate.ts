@@ -128,10 +128,12 @@ const getEntitlement = async (supabaseAdmin: ReturnType<typeof serviceClient>, u
     return fallback
   }
 
+  const today = new Date().toISOString().slice(0, 10)
   const { data: sub } = await supabaseAdmin
     .from('user_subscriptions')
     .select('plan_code,effective_from,override_monthly_request_limit,override_monthly_char_limit,override_per_request_char_limit,override_max_targets,created_at')
     .eq('user_id', userId)
+    .lte('effective_from', today)
     .order('effective_from', { ascending: false })
     .order('created_at', { ascending: false })
     .limit(1)

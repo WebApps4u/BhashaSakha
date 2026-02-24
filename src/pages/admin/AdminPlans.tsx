@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import { useGlobalLoading } from '@/hooks/useGlobalLoading'
-import { Plus, Save } from 'lucide-react'
+import { Pencil, Plus, Save, Trash2 } from 'lucide-react'
 
 type Plan = {
   code: string
@@ -24,6 +24,7 @@ export default function AdminPlans() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [plans, setPlans] = useState<Plan[]>([])
+  const [selectedCode, setSelectedCode] = useState<string | null>(null)
 
   const [draft, setDraft] = useState<Plan>({
     code: 'starter',
@@ -77,6 +78,18 @@ export default function AdminPlans() {
     })
     const json = (await resp.json().catch(() => ({}))) as any
     if (!resp.ok || !json.success) throw new Error(json.error ?? 'Failed to save')
+  }
+
+  const deletePlan = async (code: string) => {
+    setError(null)
+    const { data } = await supabase.auth.getSession()
+    const token = data.session?.access_token ?? ''
+    const resp = await fetch(`/api/admin/subscriptions/plans/${encodeURIComponent(code)}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    })
+    const json = (await resp.json().catch(() => ({}))) as any
+    if (!resp.ok || !json.success) throw new Error(json.error ?? 'Failed to delete')
   }
 
   return (
@@ -187,7 +200,13 @@ export default function AdminPlans() {
             </div>
             <div className="divide-y divide-slate-200">
               {plans.map((p) => (
-                <div key={p.code} className="grid grid-cols-[1fr_2fr_1fr_1fr_1fr_1fr_1fr] gap-3 px-4 py-3 text-sm">
+                <div
+                  key={p.code}
+                  className={
+                    'grid grid-cols-[1fr_2fr_1fr_1fr_1fr_1fr_1fr] gap-3 px-4 py-3 text-sm ' +
+                    (selectedCode === p.code ? 'bg-indigo-50' : '')
+                  }
+                >
                   <div className="font-medium text-slate-900">{p.code}</div>
                   <div className="text-slate-700">{p.name}</div>
                   <div className="text-slate-700">{p.monthly_request_limit === 0 ? 'Unlimited' : p.monthly_request_limit}</div>
@@ -195,19 +214,46 @@ export default function AdminPlans() {
                   <div className="text-slate-700">{p.per_request_char_limit === 0 ? 'Unlimited' : p.per_request_char_limit}</div>
                   <div className="text-slate-700">{p.max_targets === 0 ? 'Unlimited' : p.max_targets}</div>
                   <div className="flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void wrapFn(async () => {
-                          await upsert({ ...p, is_active: !p.is_active })
-                          await load()
-                        })
-                      }
-                      className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50"
-                    >
-                      <Save className="h-4 w-4" />
-                      {p.is_active ? 'Deactivate' : 'Activate'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedCode(p.code)
+                          setDraft(p)
+                        }}
+                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50"
+                      >
+                        <Pencil className="h-4 w-4" />
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void wrapFn(async () => {
+                            await upsert({ ...p, is_active: !p.is_active })
+                            await load()
+                          })
+                        }
+                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50"
+                      >
+                        <Save className="h-4 w-4" />
+                        {p.is_active ? 'Deactivate' : 'Activate'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void wrapFn(async () => {
+                            if (!window.confirm(`Delete plan ${p.code}? (It will be deactivated)`)) return
+                            await deletePlan(p.code)
+                            await load()
+                          })
+                        }
+                        className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 transition hover:bg-rose-100"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Delete
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}

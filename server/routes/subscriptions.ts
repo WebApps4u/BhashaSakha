@@ -74,6 +74,8 @@ const nextMonthStartUtcIso = (d = new Date()) => {
   return next.toISOString()
 }
 
+const todayUtcDate = () => new Date().toISOString().slice(0, 10)
+
 router.get('/plans', async (_req: Request, res: Response): Promise<void> => {
   try {
     const supabase = anonClient()
@@ -102,6 +104,7 @@ router.get('/me', async (req: Request, res: Response): Promise<void> => {
 
     const month = monthKeyUtc()
     const supabase = getSupabaseServiceRoleKey() ? adminClient() : userClient(v.token)
+    const today = todayUtcDate()
 
     const { data: sub } = await supabase
       .from('user_subscriptions')
@@ -109,6 +112,7 @@ router.get('/me', async (req: Request, res: Response): Promise<void> => {
         'plan_code,effective_from,override_monthly_request_limit,override_monthly_char_limit,override_per_request_char_limit,override_max_targets,created_at',
       )
       .eq('user_id', v.userId)
+      .lte('effective_from', today)
       .order('effective_from', { ascending: false })
       .order('created_at', { ascending: false })
       .limit(1)
@@ -156,6 +160,68 @@ router.get('/me', async (req: Request, res: Response): Promise<void> => {
       remaining: { requests_remaining: remainingRequests, chars_remaining: remainingChars },
       reset_at: nextMonthStartUtcIso(),
     })
+  } catch (err) {
+    jsonError(res, 500, err instanceof Error ? err.message : 'Server error')
+  }
+})
+
+router.post('/activate', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const v = await verifyUser(req)
+    if (!v.ok) {
+      jsonError(res, v.status, v.error)
+      return
+    }
+
+    const planCode = typeof req.body?.plan_code === 'string' ? req.body.plan_code.trim().toLowerCase() : ''
+    const resetCurrentMonth = !!req.body?.reset_current_month
+    if (!planCode || !/^[a-z0-9_-]{2,32}$/.test(planCode)) {
+      jsonError(res, 400, 'Invalid plan_code')
+      return
+    }
+
+    if (!getSupabaseServiceRoleKey()) {
+      jsonError(res, 500, 'Server is missing SUPABASE_SERVICE_ROLE_KEY')
+      return
+    }
+
+    const supabase = adminClient()
+    const { data: planRow, error: planErr } = await supabase
+      .from('subscription_plans')
+      .select('code,is_active')
+      .eq('code', planCode)
+      .maybeSingle()
+    if (planErr) {
+      jsonError(res, 500, planErr.message)
+      return
+    }
+    if (!planRow || !(planRow as any).is_active) {
+      jsonError(res, 400, 'Plan is not available')
+      return
+    }
+
+    const effDate = todayUtcDate()
+
+    const { error: insertErr } = await supabase.from('user_subscriptions').insert({
+      user_id: v.userId,
+      plan_code: planCode,
+      effective_from: effDate,
+      override_monthly_request_limit: null,
+      override_monthly_char_limit: null,
+      override_per_request_char_limit: null,
+      override_max_targets: null,
+    })
+    if (insertErr) {
+      jsonError(res, 500, insertErr.message)
+      return
+    }
+
+    if (resetCurrentMonth) {
+      const month = monthKeyUtc()
+      await supabase.from('usage_months').delete().eq('user_id', v.userId).eq('month', month)
+    }
+
+    res.status(200).json({ success: true })
   } catch (err) {
     jsonError(res, 500, err instanceof Error ? err.message : 'Server error')
   }

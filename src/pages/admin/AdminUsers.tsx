@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
-import { Search, Shield, UserX, UserCheck } from 'lucide-react'
+import { Save, Search, Shield, UserX, UserCheck } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useGlobalLoading } from '@/hooks/useGlobalLoading'
 
@@ -12,6 +12,13 @@ type AdminUser = {
   display_name: string
   is_blocked: boolean
   roles: string[]
+  plan_code?: string
+}
+
+type PlanRow = {
+  code: string
+  name: string
+  is_active: boolean
 }
 
 export default function AdminUsers() {
@@ -21,6 +28,8 @@ export default function AdminUsers() {
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [users, setUsers] = useState<AdminUser[]>([])
+  const [plans, setPlans] = useState<PlanRow[]>([])
+  const [planDraftByUserId, setPlanDraftByUserId] = useState<Record<string, string>>({})
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -42,16 +51,29 @@ export default function AdminUsers() {
       return
     }
 
-    const resp = await fetch('/api/admin/users?per_page=100', {
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    })
+    const [resp, plansResp] = await Promise.all([
+      fetch('/api/admin/users?per_page=100', { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }),
+      fetch('/api/admin/subscriptions/plans', { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }),
+    ])
     const json = (await resp.json().catch(() => ({}))) as any
+    const plansJson = (await plansResp.json().catch(() => ({}))) as any
     if (!resp.ok || !json.success) {
       setError(json.error ?? 'Failed to load users')
       setLoading(false)
       return
     }
-    setUsers((json.users ?? []) as AdminUser[])
+    if (plansResp.ok && plansJson.success) {
+      setPlans((plansJson.plans ?? []) as PlanRow[])
+    }
+    const nextUsers = (json.users ?? []) as AdminUser[]
+    setUsers(nextUsers)
+    setPlanDraftByUserId((prev) => {
+      const copy = { ...prev }
+      for (const u of nextUsers) {
+        if (!copy[u.id]) copy[u.id] = (u.plan_code ?? 'free') as string
+      }
+      return copy
+    })
     setLoading(false)
   }, [])
 
@@ -118,6 +140,30 @@ export default function AdminUsers() {
     }
   }
 
+  const setUserPlan = async (userId: string, planCode: string) => {
+    setBusy(userId, true)
+    setError(null)
+    try {
+      await wrapFn(async () => {
+        const { data } = await supabase.auth.getSession()
+        const token = data.session?.access_token ?? ''
+        const effective_from = new Date().toISOString().slice(0, 10)
+        const resp = await fetch(`/api/admin/subscriptions/users/${encodeURIComponent(userId)}`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ plan_code: planCode, effective_from, reset_current_month: true }),
+        })
+        const json = (await resp.json().catch(() => ({}))) as any
+        if (!resp.ok || !json.success) throw new Error(json.error ?? 'Failed to set plan')
+        setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, plan_code: planCode } : u)))
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to set plan')
+    } finally {
+      setBusy(userId, false)
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -155,9 +201,10 @@ export default function AdminUsers() {
           </div>
         ) : (
           <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
-            <div className="grid grid-cols-[2fr_1fr_1fr_1fr] gap-3 bg-slate-50 px-4 py-2 text-xs font-semibold text-slate-600">
+            <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-3 bg-slate-50 px-4 py-2 text-xs font-semibold text-slate-600">
               <div>User</div>
               <div>Roles</div>
+              <div>Plan</div>
               <div>Status</div>
               <div className="text-right">Actions</div>
             </div>
@@ -166,7 +213,7 @@ export default function AdminUsers() {
                 const busy = !!busyIds[u.id]
                 const isAdmin = u.roles.includes('admin') || u.roles.includes('super_admin')
                 return (
-                  <div key={u.id} className="grid grid-cols-[2fr_1fr_1fr_1fr] gap-3 px-4 py-3">
+                  <div key={u.id} className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-3 px-4 py-3">
                     <div className="min-w-0">
                       <div className="truncate text-sm font-medium text-slate-900">{u.email ?? u.id}</div>
                       <div className="mt-0.5 truncate text-xs text-slate-500">{u.display_name || u.id}</div>
@@ -182,6 +229,34 @@ export default function AdminUsers() {
                         <Shield className="h-3.5 w-3.5" />
                         {isAdmin ? 'admin' : 'user'}
                       </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={planDraftByUserId[u.id] ?? (u.plan_code ?? 'free')}
+                        disabled={busy}
+                        onChange={(e) => setPlanDraftByUserId((p) => ({ ...p, [u.id]: e.target.value }))}
+                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 disabled:opacity-50"
+                      >
+                        {plans
+                          .filter((p) => p.is_active)
+                          .map((p) => (
+                            <option key={p.code} value={p.code}>
+                              {p.name} ({p.code})
+                            </option>
+                          ))}
+                      </select>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void setUserPlan(u.id, planDraftByUserId[u.id] ?? (u.plan_code ?? 'free'))}
+                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        <span className="inline-flex items-center gap-2">
+                          <Save className="h-4 w-4" />
+                          Set
+                        </span>
+                      </button>
                     </div>
 
                     <div className="flex items-center">

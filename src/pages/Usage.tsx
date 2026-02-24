@@ -48,6 +48,7 @@ export default function Usage() {
   const [plans, setPlans] = useState<PlanRow[]>([])
   const [me, setMe] = useState<UsageMe | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [planSwitching, setPlanSwitching] = useState(false)
 
   const canLoad = useMemo(() => isReady, [isReady])
 
@@ -77,6 +78,29 @@ export default function Usage() {
       setMe(null)
     }
   }, [])
+
+  const activatePlan = async (planCode: string) => {
+    setError(null)
+    setPlanSwitching(true)
+    try {
+      const { data: sessionData } = await supabase.auth.getSession()
+      const token = sessionData.session?.access_token ?? ''
+      if (!token) throw new Error('Not signed in')
+
+      const resp = await fetch('/api/subscriptions/activate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ plan_code: planCode, reset_current_month: true }),
+      })
+      const json = (await resp.json().catch(() => ({}))) as any
+      if (!resp.ok || !json.success) throw new Error(json.error ?? 'Failed to activate plan')
+      await load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to activate plan')
+    } finally {
+      setPlanSwitching(false)
+    }
+  }
 
   useEffect(() => {
     if (!canLoad) return
@@ -227,8 +251,23 @@ export default function Usage() {
                     Characters/month: {p.monthly_char_limit === 0 ? 'Unlimited' : p.monthly_char_limit}
                   </div>
                   <div className="mt-4 text-xs text-slate-500 dark:text-slate-300">
-                    To upgrade, contact support or ask an admin to switch your plan.
+                    {isCurrent ? 'This plan is active on your account.' : ''}
                   </div>
+                  {!isCurrent ? (
+                    <div className="mt-3">
+                      <button
+                        type="button"
+                        disabled={planSwitching}
+                        onClick={() => {
+                          if (!window.confirm(`Activate plan ${p.name} (${p.code})?`)) return
+                          void wrapFn(() => activatePlan(p.code))
+                        }}
+                        className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-50 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100"
+                      >
+                        Activate
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               )
             })}
