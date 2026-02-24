@@ -6,6 +6,7 @@ const router = Router()
 
 const getSupabaseUrl = () => process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? ''
 const getSupabaseAnonKey = () => process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY ?? ''
+const getSupabaseServiceRoleKey = () => process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
 
 const parseBearer = (req: Request) => {
   const auth = req.header('authorization') ?? ''
@@ -19,9 +20,21 @@ const requireAnonEnv = () => {
   if (!SUPABASE_ANON_KEY) throw new Error('Missing SUPABASE_ANON_KEY')
 }
 
+const requireServiceEnv = () => {
+  requireAnonEnv()
+  if (!getSupabaseServiceRoleKey()) throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY')
+}
+
 const anonClient = () => {
   requireAnonEnv()
   return createClient(getSupabaseUrl(), getSupabaseAnonKey(), {
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
+}
+
+const adminClient = () => {
+  requireServiceEnv()
+  return createClient(getSupabaseUrl(), getSupabaseServiceRoleKey(), {
     auth: { persistSession: false, autoRefreshToken: false },
   })
 }
@@ -38,6 +51,13 @@ const verifyUser = async (req: Request) => {
 
 const getGoogleTtsApiKey = () => (process.env.GOOGLE_TTS_API_KEY ?? process.env.GOOGLE_API_KEY ?? '').trim()
 const getGeminiApiKey = () => (process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY ?? '').trim()
+
+const ttsCacheBucket = () => (process.env.TTS_CACHE_BUCKET ?? 'tts-cache').trim() || 'tts-cache'
+const ttsCacheVersion = () => (process.env.TTS_CACHE_VERSION ?? '1').trim() || '1'
+const enableStorageCache = () => {
+  const v = (process.env.ENABLE_TTS_STORAGE_CACHE ?? 'true').toLowerCase().trim()
+  return v === 'true' || v === '1' || v === 'yes'
+}
 
 const normalizeLang = (lang: string) => {
   const v = String(lang ?? '').trim().toLowerCase()
@@ -138,6 +158,79 @@ const pcm16leToWav = (pcm: Buffer, sampleRate = 24000, channels = 1) => {
   header.writeUInt32LE(dataSize, 40)
 
   return Buffer.concat([header, pcm])
+}
+
+const extForContentType = (contentType: string) => {
+  const v = contentType.toLowerCase()
+  if (v.includes('mpeg') || v.includes('mp3')) return 'mp3'
+  if (v.includes('ogg')) return 'ogg'
+  if (v.includes('wav')) return 'wav'
+  return 'bin'
+}
+
+const contentTypeForExt = (ext: string) => {
+  const v = ext.toLowerCase()
+  if (v === 'mp3') return 'audio/mpeg'
+  if (v === 'ogg') return 'audio/ogg'
+  if (v === 'wav') return 'audio/wav'
+  return 'application/octet-stream'
+}
+
+const sha256Hex = (s: string) => crypto.createHash('sha256').update(s).digest('hex')
+
+const storagePathForKey = ({
+  cacheKey,
+  lang,
+  contentType,
+}: {
+  cacheKey: string
+  lang: string
+  contentType: string
+}) => {
+  const ext = extForContentType(contentType)
+  const safeLang = (lang || 'und').replace(/[^a-z0-9-]/gi, '_')
+  return { path: `tts/${safeLang}/${cacheKey}.${ext}`, contentType: contentTypeForExt(ext) }
+}
+
+const storageTryGet = async ({
+  cacheKey,
+  lang,
+  contentType,
+}: {
+  cacheKey: string
+  lang: string
+  contentType: string
+}) => {
+  if (!enableStorageCache()) return null
+  if (!getSupabaseServiceRoleKey()) return null
+
+  const supabase = adminClient()
+  const bucket = ttsCacheBucket()
+  const { path, contentType: ct } = storagePathForKey({ cacheKey, lang, contentType })
+  const { data, error } = await supabase.storage.from(bucket).download(path)
+  if (error || !data) return null
+
+  const arrayBuffer = await (data as any).arrayBuffer()
+  return { buf: Buffer.from(arrayBuffer), contentType: ct }
+}
+
+const storagePut = async ({
+  cacheKey,
+  lang,
+  contentType,
+  buf,
+}: {
+  cacheKey: string
+  lang: string
+  contentType: string
+  buf: Buffer
+}) => {
+  if (!enableStorageCache()) return
+  if (!getSupabaseServiceRoleKey()) return
+  const supabase = adminClient()
+  const bucket = ttsCacheBucket()
+  const { path, contentType: ct } = storagePathForKey({ cacheKey, lang, contentType })
+  await supabase.storage.from(bucket).upload(path, new Uint8Array(buf), { contentType: ct, upsert: true })
 }
 
 const extractInlineAudio = (bodyText: string) => {
@@ -266,24 +359,41 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
       return
     }
 
-    const cacheKey = crypto
-      .createHash('sha256')
-      .update(JSON.stringify({ t: trimmed, l: lang, r: Math.min(4, Math.max(0.25, rate)), p: Math.min(20, Math.max(-20, pitch)), g: gender }))
-      .digest('hex')
-
-    const cached = cacheGet(cacheKey)
-    if (cached) {
-      res.status(200)
-      res.setHeader('Content-Type', cached.contentType)
-      res.setHeader('Cache-Control', 'private, max-age=600')
-      res.send(cached.buf)
-      return
+    const baseKey = {
+      v: ttsCacheVersion(),
+      t: trimmed,
+      l: lang,
+      r: Math.min(4, Math.max(0.25, rate)),
+      p: Math.min(20, Math.max(-20, pitch)),
+      g: gender,
     }
 
     if (geminiKey) {
+      const voiceName = (process.env.GEMINI_TTS_VOICE_NAME ?? '').trim() || 'Kore'
+      const geminiCacheKey = sha256Hex(JSON.stringify({ ...baseKey, provider: 'gemini', voice: voiceName }))
+      const storageHit = await storageTryGet({ cacheKey: geminiCacheKey, lang, contentType: 'audio/wav' })
+      if (storageHit) {
+        cacheSet(geminiCacheKey, storageHit.buf, storageHit.contentType)
+        res.status(200)
+        res.setHeader('Content-Type', storageHit.contentType)
+        res.setHeader('Cache-Control', 'private, max-age=31536000')
+        res.send(storageHit.buf)
+        return
+      }
+
+      const memHit = cacheGet(geminiCacheKey)
+      if (memHit) {
+        res.status(200)
+        res.setHeader('Content-Type', memHit.contentType)
+        res.setHeader('Cache-Control', 'private, max-age=600')
+        res.send(memHit.buf)
+        return
+      }
+
       const gemini = await synthGemini({ apiKey: geminiKey, text: trimmed, lang })
       if (gemini) {
-        cacheSet(cacheKey, gemini.buf, gemini.contentType)
+        cacheSet(geminiCacheKey, gemini.buf, gemini.contentType)
+        await storagePut({ cacheKey: geminiCacheKey, lang, contentType: gemini.contentType, buf: gemini.buf })
         res.status(200)
         res.setHeader('Content-Type', gemini.contentType)
         res.setHeader('Cache-Control', 'private, max-age=600')
@@ -301,6 +411,26 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
     const chosen = pickVoice(voices, lang, gender)
     if (!chosen) {
       res.status(404).json({ success: false, error: `No voice available for ${lang}` })
+      return
+    }
+
+    const cloudCacheKey = sha256Hex(JSON.stringify({ ...baseKey, provider: 'cloud', voice: chosen.name }))
+    const cloudStorageHit = await storageTryGet({ cacheKey: cloudCacheKey, lang, contentType: 'audio/mpeg' })
+    if (cloudStorageHit) {
+      cacheSet(cloudCacheKey, cloudStorageHit.buf, cloudStorageHit.contentType)
+      res.status(200)
+      res.setHeader('Content-Type', cloudStorageHit.contentType)
+      res.setHeader('Cache-Control', 'private, max-age=31536000')
+      res.send(cloudStorageHit.buf)
+      return
+    }
+
+    const cloudMemHit = cacheGet(cloudCacheKey)
+    if (cloudMemHit) {
+      res.status(200)
+      res.setHeader('Content-Type', cloudMemHit.contentType)
+      res.setHeader('Cache-Control', 'private, max-age=600')
+      res.send(cloudMemHit.buf)
       return
     }
 
@@ -330,7 +460,8 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
     }
 
     const buf = Buffer.from(audioContent, 'base64')
-    cacheSet(cacheKey, buf, 'audio/mpeg')
+    cacheSet(cloudCacheKey, buf, 'audio/mpeg')
+    await storagePut({ cacheKey: cloudCacheKey, lang, contentType: 'audio/mpeg', buf })
 
     res.status(200)
     res.setHeader('Content-Type', 'audio/mpeg')
