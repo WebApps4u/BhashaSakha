@@ -1,0 +1,15 @@
+{
+  email you@example.com
+}
+
+# Main app
+server.jssc.site {
+  encode gzip
+  reverse_proxy 127.0.0.1:3100
+}
+
+# Self-hosted Supabase API gateway (Kong)
+supabase.server.jssc.site {
+  encode gzip
+  reverse_proxy 127.0.0.1:8000
+}

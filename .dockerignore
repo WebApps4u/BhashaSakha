@@ -1,0 +1,12 @@
+node_modules
+dist
+build
+.git
+.vercel
+.trae
+.qodo
+.DS_Store
+npm-debug.log
+.env
+.env.*
+

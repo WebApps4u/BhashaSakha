@@ -12,6 +12,8 @@ import express, {
 import cors from 'cors'
 import dotenv from 'dotenv'
 import crypto from 'crypto'
+import path from 'path'
+import { fileURLToPath } from 'url'
 import authRoutes from './routes/auth.js'
 import translateRoutes from './routes/translate.js'
 import configRoutes from './routes/config.js'
@@ -62,6 +64,29 @@ app.use('/api/subscriptions', subscriptionRoutes)
 app.use('/api/model-request', modelRequestRoutes)
 app.use('/api/models', modelsRoutes)
 app.use('/api/tts', ttsRoutes)
+
+const tryServeFrontend = () => {
+  const enabled = (process.env.SERVE_FRONTEND ?? '').toLowerCase().trim()
+  if (!(enabled === 'true' || enabled === '1' || enabled === 'yes' || process.env.NODE_ENV === 'production')) return
+
+  const here = path.dirname(fileURLToPath(import.meta.url))
+  const distDir = path.resolve(here, '../../dist')
+  const indexPath = path.join(distDir, 'index.html')
+
+  app.use(express.static(distDir, {
+    index: false,
+    maxAge: '1y',
+    immutable: true,
+  }))
+
+  app.get('*', (req: Request, res: Response, next: NextFunction) => {
+    if (req.path.startsWith('/api/')) return next()
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next()
+    res.sendFile(indexPath)
+  })
+}
+
+tryServeFrontend()
 
 /**
  * health

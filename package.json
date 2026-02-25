@@ -6,11 +6,14 @@
   "scripts": {
     "client:dev": "vite",
     "build": "tsc -b && vite build",
+    "server:build": "tsc -p tsconfig.server.json",
+    "build:prod": "npm run build && npm run server:build",
     "lint": "eslint .",
     "preview": "vite preview",
     "check": "tsc --noEmit",
     "server:dev": "nodemon",
-    "dev": "concurrently \"npm run client:dev\" \"npm run server:dev\""
+    "dev": "concurrently \"npm run client:dev\" \"npm run server:dev\"",
+    "start": "node build/server/server.js"
   },
   "dependencies": {
     "clsx": "^2.1.1",
