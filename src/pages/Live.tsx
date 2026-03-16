@@ -51,10 +51,36 @@ export default function Live() {
 
   const detector = useLanguageDetector()
 
+  const [autoDetectLockedLang, setAutoDetectLockedLang] = useState<string | null>(null)
+
   const speech = useSpeechCaptions({
     enabled: !!user,
     lang: speechLang,
-    onFinal: live.onFinal,
+    onFinal: async (payload) => {
+      if (sourceLang !== 'auto') {
+        await live.onFinal(payload)
+        return
+      }
+
+      if (autoDetectLockedLang) {
+        await live.onFinal(payload)
+        return
+      }
+
+      const { language, error } = await detector.detectFromText(payload.text)
+      if (!language) {
+        if (error) live.setError(error)
+        await live.onFinal(payload)
+        return
+      }
+
+      setAutoDetectLockedLang(language)
+      setSourceLang(language)
+
+      await live.onFinal(payload)
+      speech.stop()
+      await speech.start(language)
+    },
   })
 
   const orderedSegments = useMemo(() => live.segments.slice().sort((a, b) => a.seq - b.seq), [live.segments])
@@ -84,15 +110,9 @@ export default function Live() {
 
     if (speech.status === 'idle') {
       live.setError(null)
-      
+      setAutoDetectLockedLang(null)
       if (sourceLang === 'auto') {
-        const { language, error } = await detector.detect()
-        if (language) {
-          setSourceLang(language)
-          await speech.start(language)
-        } else {
-          if (error) live.setError(error)
-        }
+        await speech.start('en-IN')
       } else {
         await speech.start()
       }
