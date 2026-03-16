@@ -55,19 +55,21 @@ export default function Auth() {
   }
 
   return (
-    <div className="mx-auto max-w-md">
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-white/5">
-        <div className="flex items-center justify-between">
-          <h1 className="text-lg font-semibold">{mode === 'signin' ? t('auth.signIn') : t('auth.createAccount')}</h1>
-          <Link to="/live" className="text-sm text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-50">
+    <div className="mx-auto max-w-md pt-12">
+      <div className="border border-neutral-200 bg-white p-8 dark:border-neutral-800 dark:bg-black">
+        <div className="flex items-center justify-between mb-8">
+          <h1 className="text-xl font-bold uppercase tracking-widest text-black dark:text-white">
+            {mode === 'signin' ? t('auth.signIn') : t('auth.createAccount')}
+          </h1>
+          <Link to="/live" className="text-xs uppercase tracking-wider text-neutral-500 hover:text-black dark:text-neutral-400 dark:hover:text-white">
             {t('common.back')}
           </Link>
         </div>
 
-        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{t('live.signInToStart')}</p>
+        <p className="mb-6 text-sm text-neutral-600 dark:text-neutral-300">{t('live.signInToStart')}</p>
 
         <form
-          className="mt-4 space-y-3"
+          className="space-y-6"
           onSubmit={async (e) => {
             e.preventDefault()
             setBusy(true)
@@ -127,9 +129,9 @@ export default function Auth() {
           }}
         >
           <label className="block">
-            <span className="text-xs text-slate-600 dark:text-slate-300">{t('auth.email')}</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">{t('auth.email')}</span>
             <input
-              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-300 dark:border-white/10 dark:bg-white/5 dark:text-slate-50"
+              className="minimal-input text-black dark:text-white mt-1"
               type="email"
               autoComplete="email"
               value={email}
@@ -138,9 +140,9 @@ export default function Auth() {
             />
           </label>
           <label className="block">
-            <span className="text-xs text-slate-600 dark:text-slate-300">{t('auth.password')}</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">{t('auth.password')}</span>
             <input
-              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-300 dark:border-white/10 dark:bg-white/5 dark:text-slate-50"
+              className="minimal-input text-black dark:text-white mt-1"
               type="password"
               autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
               value={password}
@@ -151,7 +153,7 @@ export default function Auth() {
           </label>
 
           {error ? (
-            <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
+            <div className="border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-900/10 dark:text-red-200">
               {error}
             </div>
           ) : null}
@@ -159,19 +161,19 @@ export default function Auth() {
           <button
             type="submit"
             disabled={busy}
-            className="inline-flex w-full items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-50 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100"
+            className="minimal-btn-primary w-full"
           >
             {busy ? t('auth.pleaseWait') : mode === 'signin' ? t('auth.signIn') : t('auth.createAccount')}
           </button>
         </form>
 
-        <div className="mt-4 text-sm text-slate-600 dark:text-slate-300">
+        <div className="mt-6 text-center text-sm">
           {mode === 'signin' ? (
-            <button type="button" className="underline hover:text-slate-900 dark:hover:text-slate-50" onClick={() => setMode('signup')}>
+            <button type="button" className="text-neutral-500 hover:text-black hover:underline dark:text-neutral-400 dark:hover:text-white" onClick={() => setMode('signup')}>
               {t('auth.needAccount')}
             </button>
           ) : (
-            <button type="button" className="underline hover:text-slate-900 dark:hover:text-slate-50" onClick={() => setMode('signin')}>
+            <button type="button" className="text-neutral-500 hover:text-black hover:underline dark:text-neutral-400 dark:hover:text-white" onClick={() => setMode('signin')}>
               {t('auth.haveAccount')}
             </button>
           )}

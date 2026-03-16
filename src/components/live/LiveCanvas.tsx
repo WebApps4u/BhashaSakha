@@ -1,4 +1,5 @@
 import { Volume2, VolumeX } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 export default function LiveCanvas({
   showRight,
@@ -22,61 +23,67 @@ export default function LiveCanvas({
   onToggleTts?: () => void
 }) {
   return (
-    <div className="relative mx-auto max-w-6xl px-4 pb-32">
-      <div className={showRight ? 'grid gap-6 md:grid-cols-2' : ''}>
-        <div className="min-h-[46vh] rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-white/5">
-          <div className="flex h-full flex-col justify-end">
-            {leftLines.length === 0 ? (
-              <div className="text-center text-sm text-slate-400 dark:text-slate-400">You can start speaking now…</div>
-            ) : (
-              <div className="space-y-2">
-                {leftLines.slice(-18).map((l) => (
-                  <div key={l.id} className="text-base leading-6 text-slate-900 dark:text-slate-50">
-                    {l.text}
-                  </div>
-                ))}
-                {interim ? <div className="text-base text-slate-500 dark:text-slate-300">{interim}</div> : null}
+    <div className="relative mx-auto h-full w-full max-w-[1600px] px-8">
+      {/* Central Divider Hairline */}
+      {showRight && (
+        <div className="absolute left-1/2 top-0 h-full w-[1px] -translate-x-1/2 bg-neutral-100 dark:bg-neutral-900" />
+      )}
+
+      <div className={cn('grid h-full gap-0', showRight ? 'md:grid-cols-2' : 'max-w-3xl mx-auto')}>
+        {/* Left Panel: Original Speech */}
+        <div className={cn('flex h-full flex-col justify-end pb-32 transition-all duration-500', showRight ? 'pr-12' : '')}>
+          <div className="space-y-10">
+            {leftLines.slice(-6).map((l) => (
+              <div key={l.id} className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+                <div className="text-3xl font-extralight leading-tight tracking-tight text-black dark:text-white md:text-5xl lg:text-6xl opacity-90">
+                  {l.text.toLowerCase()}
+                </div>
               </div>
-            )}
+            ))}
+            {interim ? (
+              <div className="text-3xl font-extralight leading-tight tracking-tight text-neutral-300 dark:text-neutral-600 md:text-5xl lg:text-6xl">
+                {interim.toLowerCase()}
+              </div>
+            ) : null}
           </div>
         </div>
 
+        {/* Right Panel: Translation */}
         {showRight ? (
-          <div className="min-h-[46vh] rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-white/5">
-            <div className="flex h-full flex-col justify-end">
-              {rightLines.length === 0 ? (
-                <div className="text-center text-sm text-slate-400 dark:text-slate-400">Translation will appear here…</div>
-              ) : (
-                <div className="space-y-2">
-                  {rightLines.slice(-18).map((l) => (
-                    <div key={l.id} className="relative pl-3 text-base leading-6 text-slate-900 dark:text-slate-50">
-                      <div className="absolute left-0 top-1.5 h-4 w-[2px] rounded bg-slate-200 dark:bg-white/20" />
-                      {l.text || (translatingIds[l.id] ? 'Translating…' : '')}
-                    </div>
-                  ))}
+          <div className="flex h-full flex-col justify-end pb-32 pl-12 transition-all duration-500">
+            <div className="space-y-10">
+              {rightLines.slice(-6).map((l) => (
+                <div key={l.id} className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+                  <div className="text-3xl font-extralight leading-tight tracking-tight text-black dark:text-white md:text-5xl lg:text-6xl opacity-90">
+                    {l.text || (translatingIds[l.id] ? <span className="animate-pulse text-neutral-200">...</span> : '')}
+                  </div>
                 </div>
-              )}
+              ))}
             </div>
           </div>
         ) : null}
       </div>
 
-      <div className="mt-4 flex items-center justify-between">
-        <div className="text-xs text-slate-500 dark:text-slate-300">{footerLeft}</div>
-        <button
-          type="button"
-          onClick={onToggleTts}
-          disabled={!onToggleTts}
-          aria-pressed={ttsEnabled}
-          className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-default disabled:hover:bg-white dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10 dark:disabled:hover:bg-white/5"
-        >
-          {languageChip}
-          {ttsEnabled ? (
-            <Volume2 className="h-3.5 w-3.5 text-slate-500 dark:text-slate-300" />
-          ) : (
-            <VolumeX className="h-3.5 w-3.5 text-slate-400 dark:text-slate-400" />
-          )}
-        </button>
+      {/* Footer Info */}
+      <div className="fixed bottom-0 left-0 right-0 z-20 px-8 pb-8 pointer-events-none">
+        <div className="mx-auto max-w-[1600px] flex items-center justify-between">
+            <div className="text-[10px] font-bold uppercase tracking-[0.3em] text-neutral-400 dark:text-neutral-600">{footerLeft}</div>
+            <button
+            type="button"
+            onClick={onToggleTts}
+            disabled={!onToggleTts}
+            className="pointer-events-auto group inline-flex items-center gap-4 transition-colors disabled:opacity-50"
+            >
+            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400 group-hover:text-black dark:text-neutral-600 dark:group-hover:text-white">
+                {languageChip}
+            </span>
+            {ttsEnabled ? (
+                <Volume2 className="h-4 w-4 text-black dark:text-white" />
+            ) : (
+                <VolumeX className="h-4 w-4 text-neutral-300 dark:text-neutral-700" />
+            )}
+            </button>
+        </div>
       </div>
     </div>
   )

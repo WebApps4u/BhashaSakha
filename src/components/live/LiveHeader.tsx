@@ -1,7 +1,8 @@
-import { ArrowLeftRight } from 'lucide-react'
+import { ArrowLeftRight, Share2, ExternalLink } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { LANGUAGES } from '@/utils/languages'
 import { useTranslation } from 'react-i18next'
+import { cn } from '@/lib/utils'
 
 export type LiveMode = 'transcribe' | 'translate' | 'dubbing'
 
@@ -15,22 +16,29 @@ function LangSelect({
   allowAuto?: boolean
 }) {
   return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none focus:border-slate-300 dark:border-white/10 dark:bg-white/5 dark:text-slate-50"
-    >
-      {allowAuto ? <option value="auto">Auto-detect</option> : null}
-      {LANGUAGES.map((l) => (
-        <option key={l.code} value={l.code}>
-          {l.label}
-        </option>
-      ))}
-    </select>
+    <div className="relative">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full appearance-none border-b border-neutral-300 bg-transparent py-2 pr-8 text-center text-xl font-light text-black outline-none transition-colors hover:border-black focus:border-black dark:border-neutral-700 dark:text-white dark:hover:border-white dark:focus:border-white"
+      >
+        {allowAuto ? <option value="auto">Auto-detect</option> : null}
+        {LANGUAGES.map((l) => (
+          <option key={l.code} value={l.code}>
+            {l.label}
+          </option>
+        ))}
+      </select>
+      <div className="pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 opacity-50">
+        <svg width="10" height="6" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square"/>
+        </svg>
+      </div>
+    </div>
   )
 }
 
-function Pill({
+function Tab({
   active,
   children,
   onClick,
@@ -46,13 +54,12 @@ function Pill({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className={
-        'h-10 rounded-xl px-4 text-sm transition ' +
-        (active
-          ? 'border border-slate-900 bg-slate-900 text-white dark:border-white/10 dark:bg-white dark:text-slate-900'
-          : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10') +
-        (disabled ? ' opacity-50' : '')
-      }
+      className={cn(
+        'pb-1 text-xs font-bold uppercase tracking-widest transition-all disabled:opacity-30',
+        active
+          ? 'border-b-2 border-black text-black dark:border-white dark:text-white'
+          : 'border-b-2 border-transparent text-neutral-400 hover:text-black dark:text-neutral-500 dark:hover:text-white'
+      )}
     >
       {children}
     </button>
@@ -90,87 +97,101 @@ export default function LiveHeader({
 }) {
   const { t } = useTranslation()
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10">
-      <div className="text-center">
-        <h1 className="text-3xl font-semibold tracking-tight">{t('live.title')}</h1>
-        <div className="mt-2 text-sm text-slate-600 dark:text-slate-300">{t('live.subtitle')}</div>
-      </div>
+    <div className="mx-auto max-w-[1400px] px-6 py-12">
+      <div className="flex flex-col items-center justify-center space-y-8">
+        {/* Title Area */}
+        <div className="text-center">
+          <h1 className="text-4xl font-light tracking-tight text-black dark:text-white sm:text-5xl md:text-6xl">
+            {t('live.title')}
+          </h1>
+          <div className="mt-4 text-sm font-medium uppercase tracking-widest text-neutral-500 dark:text-neutral-400">
+            {t('live.subtitle')}
+          </div>
+        </div>
 
-      <div className="mt-8 flex justify-center">
-        <div className="inline-flex rounded-full border border-slate-200 bg-white p-1 shadow-sm dark:border-white/10 dark:bg-white/5">
+        {/* Privacy Toggles */}
+        <div className="flex items-center gap-6">
           <button
             type="button"
             onClick={() => onPrivacy('private')}
-            className={
-              'rounded-full px-4 py-2 text-sm transition ' +
-              (privacy === 'private'
-                ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
-                : 'text-slate-600 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-white/10')
-            }
+            className={cn(
+              'text-xs font-bold uppercase tracking-widest transition-colors',
+              privacy === 'private' ? 'text-black dark:text-white' : 'text-neutral-400 hover:text-black dark:text-neutral-500 dark:hover:text-white'
+            )}
           >
             {t('live.private')}
           </button>
+          <div className="h-3 w-[1px] bg-neutral-300 dark:bg-neutral-700" />
           <button
             type="button"
             onClick={() => onPrivacy('shareable')}
-            className={
-              'rounded-full px-4 py-2 text-sm transition ' +
-              (privacy === 'shareable'
-                ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
-                : 'text-slate-600 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-white/10')
-            }
+            className={cn(
+              'text-xs font-bold uppercase tracking-widest transition-colors',
+              privacy === 'shareable' ? 'text-black dark:text-white' : 'text-neutral-400 hover:text-black dark:text-neutral-500 dark:hover:text-white'
+            )}
           >
             {t('live.shareable')}
           </button>
         </div>
-      </div>
 
-      <div className="mt-6 flex justify-center gap-3">
-        <Pill active={mode === 'transcribe'} onClick={() => onMode('transcribe')}>{t('live.transcribe')}</Pill>
-        <Pill active={mode === 'translate'} onClick={() => onMode('translate')}>{t('live.translate')}</Pill>
-        <Pill active={mode === 'dubbing'} onClick={() => onMode('dubbing')} disabled>
-          {t('live.dubbing')}
-        </Pill>
-      </div>
-
-      <div className="mt-6 grid gap-3 md:grid-cols-[1fr_auto_1fr] md:items-center md:justify-center">
-        <LangSelect value={sourceLang} onChange={onSourceLang} allowAuto />
-        <button
-          type="button"
-          onClick={onSwap}
-          disabled={sourceLang === 'auto' || mode !== 'translate'}
-          className="mx-auto inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
-          aria-label="Swap languages"
-        >
-          <ArrowLeftRight className="h-5 w-5" />
-        </button>
-        <LangSelect value={targetLang} onChange={(v) => onTargetLang(v)} />
-      </div>
-
-      <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm dark:border-white/10 dark:bg-white/5">
-        <div className="min-w-0">
-          <div className="text-sm font-medium text-slate-900 dark:text-slate-50">{t('live.pressAndTalk')}</div>
-          <div className="mt-1 text-xs text-slate-500 dark:text-slate-300">
-            {isSignedIn ? t('live.signedInHint') : t('live.signedOutHint')}
-          </div>
+        {/* Mode Tabs */}
+        <div className="flex items-center gap-8 border-b border-neutral-200 pb-px dark:border-neutral-800">
+          <Tab active={mode === 'transcribe'} onClick={() => onMode('transcribe')}>{t('live.transcribe')}</Tab>
+          <Tab active={mode === 'translate'} onClick={() => onMode('translate')}>{t('live.translate')}</Tab>
+          <Tab active={mode === 'dubbing'} onClick={() => onMode('dubbing')} disabled>
+            {t('live.dubbing')}
+          </Tab>
         </div>
-        <div className="flex items-center gap-2">
+
+        {/* Language Selection Grid */}
+        <div className="grid w-full max-w-2xl grid-cols-[1fr_auto_1fr] items-center gap-8 pt-8">
+          <LangSelect value={sourceLang} onChange={onSourceLang} allowAuto />
+          
           <button
             type="button"
-            onClick={onOpenShare}
-            disabled={!canShare}
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
+            onClick={onSwap}
+            disabled={sourceLang === 'auto' || mode !== 'translate'}
+            className="group flex h-12 w-12 items-center justify-center border border-neutral-200 bg-white transition-all hover:border-black hover:bg-black hover:text-white disabled:opacity-30 dark:border-neutral-800 dark:bg-black dark:hover:border-white dark:hover:bg-white dark:hover:text-black"
+            aria-label="Swap languages"
           >
-            {t('live.share')}
+            <ArrowLeftRight className="h-5 w-5 transition-transform group-hover:rotate-180" />
           </button>
-          {editorHref ? (
-            <Link
-              to={editorHref}
-              className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100"
+
+          <LangSelect value={targetLang} onChange={(v) => onTargetLang(v)} />
+        </div>
+
+        {/* Action Bar */}
+        <div className="flex w-full max-w-4xl items-center justify-between border-t border-neutral-200 pt-8 dark:border-neutral-800">
+          <div className="flex flex-col gap-1">
+            <div className="text-sm font-medium uppercase tracking-wider text-black dark:text-white">
+              {t('live.pressAndTalk')}
+            </div>
+            <div className="text-xs text-neutral-500 dark:text-neutral-400">
+              {isSignedIn ? t('live.signedInHint') : t('live.signedOutHint')}
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-4">
+            <button
+              type="button"
+              onClick={onOpenShare}
+              disabled={!canShare}
+              className="group inline-flex items-center gap-2 border border-black bg-transparent px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-black transition-all hover:bg-black hover:text-white disabled:opacity-50 dark:border-white dark:text-white dark:hover:bg-white dark:hover:text-black"
             >
-              {t('live.openEditor')}
-            </Link>
-          ) : null}
+              <Share2 className="h-4 w-4" />
+              {t('live.share')}
+            </button>
+            
+            {editorHref ? (
+              <Link
+                to={editorHref}
+                className="inline-flex items-center gap-2 border border-black bg-black px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-white transition-all hover:bg-neutral-800 dark:border-white dark:bg-white dark:text-black dark:hover:bg-neutral-200"
+              >
+                <ExternalLink className="h-4 w-4" />
+                {t('live.openEditor')}
+              </Link>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>

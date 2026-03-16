@@ -23,6 +23,7 @@ import subscriptionRoutes from './routes/subscriptions.js'
 import modelRequestRoutes from './routes/modelRequest.js'
 import modelsRoutes from './routes/models.js'
 import ttsRoutes from './routes/tts.js'
+import detectRoutes from './routes/detect.js'
 
 // load env
 dotenv.config()
@@ -64,6 +65,7 @@ app.use('/api/subscriptions', subscriptionRoutes)
 app.use('/api/model-request', modelRequestRoutes)
 app.use('/api/models', modelsRoutes)
 app.use('/api/tts', ttsRoutes)
+app.use('/api/detect', detectRoutes)
 
 const tryServeFrontend = () => {
   const enabled = (process.env.SERVE_FRONTEND ?? '').toLowerCase().trim()

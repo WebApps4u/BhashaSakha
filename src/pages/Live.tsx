@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
 import { useSpeechCaptions } from '@/hooks/useSpeechCaptions'
+import { useLanguageDetector } from '@/hooks/useLanguageDetector'
 import { getLanguageLabel } from '@/utils/languages'
 import LiveHeader, { type LiveMode } from '@/components/live/LiveHeader'
 import LiveCanvas from '@/components/live/LiveCanvas'
@@ -11,6 +12,7 @@ import LiveSettingsModal from '@/components/live/LiveSettingsModal'
 import { useLiveController } from '@/hooks/useLiveController'
 import { useTranslation } from 'react-i18next'
 import { useSettingsStore } from '@/store/settingsStore'
+import { cn } from '@/lib/utils'
 
 export default function Live() {
   const { t } = useTranslation()
@@ -47,6 +49,8 @@ export default function Live() {
     ttsLang,
   })
 
+  const detector = useLanguageDetector()
+
   const speech = useSpeechCaptions({
     enabled: !!user,
     lang: speechLang,
@@ -80,7 +84,18 @@ export default function Live() {
 
     if (speech.status === 'idle') {
       live.setError(null)
-      await speech.start()
+      
+      if (sourceLang === 'auto') {
+        const { language, error } = await detector.detect()
+        if (language) {
+          setSourceLang(language)
+          await speech.start(language)
+        } else {
+          if (error) live.setError(error)
+        }
+      } else {
+        await speech.start()
+      }
       return
     }
 
@@ -109,51 +124,64 @@ export default function Live() {
     setTtsLang(a)
   }
 
+  const isListening = speech.status === 'listening' || detector.isDetecting
+
   return (
-    <div className="relative min-h-[calc(100vh-57px)] bg-white dark:bg-slate-950">
-      <LiveHeader
-        mode={mode}
-        onMode={setMode}
-        privacy={privacy}
-        onPrivacy={setPrivacy}
-        sourceLang={sourceLang}
-        onSourceLang={(v) => setSourceLang(v)}
-        targetLang={targetLang}
-        onTargetLang={(v) => {
-          setTargetLang(v)
-          setTargetLangs((prev) => [v, ...prev.filter((x) => x !== v)])
-          setTtsLang(v)
-          setMode('translate')
-        }}
-        onSwap={swap}
-        canShare={canShare}
-        onOpenShare={() => setShowShare(true)}
-        editorHref={editorHref}
-        isSignedIn={!!user}
-      />
+    <div className="relative min-h-[calc(100vh-57px)] bg-white dark:bg-black overflow-hidden">
+      <div className={cn(
+        "transition-all duration-700 ease-in-out",
+        isListening ? "-translate-y-full opacity-0 h-0" : "translate-y-0 opacity-100"
+      )}>
+        <LiveHeader
+          mode={mode}
+          onMode={setMode}
+          privacy={privacy}
+          onPrivacy={setPrivacy}
+          sourceLang={sourceLang}
+          onSourceLang={(v) => setSourceLang(v)}
+          targetLang={targetLang}
+          onTargetLang={(v) => {
+            setTargetLang(v)
+            setTargetLangs((prev) => [v, ...prev.filter((x) => x !== v)])
+            setTtsLang(v)
+            setMode('translate')
+          }}
+          onSwap={swap}
+          canShare={canShare}
+          onOpenShare={() => setShowShare(true)}
+          editorHref={editorHref}
+          isSignedIn={!!user}
+        />
+      </div>
 
       {live.error || speech.error ? (
-        <div className="mx-auto max-w-6xl px-4">
-          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
+        <div className="mx-auto max-w-6xl px-4 pt-4">
+          <div className="border border-red-100 bg-red-50/50 px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-red-800 dark:border-red-900/30 dark:bg-red-900/10 dark:text-red-200">
             {live.error ?? speech.error}
           </div>
         </div>
       ) : null}
 
-      <LiveCanvas
-        showRight={showRight}
-        leftLines={leftLines}
-        interim={speech.interim}
-        rightLines={rightLines}
-        translatingIds={live.translatingIds}
-        footerLeft={user ? t('live.savedHint') : t('live.signInHintFooter')}
-        languageChip={languageChip}
-        ttsEnabled={ttsEnabled}
-        onToggleTts={() => setTtsEnabled(!ttsEnabled)}
-      />
+      <div className={cn(
+        "transition-all duration-700 ease-in-out",
+        isListening ? "h-[85vh]" : "h-auto"
+      )}>
+        <LiveCanvas
+          showRight={showRight}
+          leftLines={leftLines}
+          interim={speech.interim}
+          rightLines={rightLines}
+          translatingIds={live.translatingIds}
+          footerLeft={user ? t('live.savedHint') : t('live.signInHintFooter')}
+          languageChip={languageChip}
+          ttsEnabled={ttsEnabled}
+          onToggleTts={() => setTtsEnabled(!ttsEnabled)}
+        />
+      </div>
 
       <LiveFloatingControls
         status={speech.status}
+        isDetecting={detector.isDetecting}
         supportsSpeech={speech.isSupported}
         onPrimary={() => void primaryAction()}
         onPause={speech.pause}

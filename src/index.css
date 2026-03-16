@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 :root {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
 
@@ -23,10 +23,33 @@
   }
 
   body {
-    @apply bg-white text-slate-900;
+    @apply bg-white text-black antialiased;
+    letter-spacing: -0.01em;
   }
 
   html.dark body {
-    @apply bg-slate-950 text-slate-50;
+    @apply bg-black text-white;
+  }
+}
+
+@layer components {
+  .minimal-btn {
+    @apply inline-flex items-center justify-center px-6 py-3 text-[10px] font-bold uppercase tracking-[0.2em] transition-all duration-300 rounded-none;
+  }
+  
+  .minimal-btn-primary {
+    @apply minimal-btn bg-black text-white hover:bg-neutral-800 dark:bg-white dark:text-black dark:hover:bg-neutral-200;
+  }
+  
+  .minimal-btn-outline {
+    @apply minimal-btn border border-black bg-transparent text-black hover:bg-black hover:text-white dark:border-white dark:text-white dark:hover:bg-white dark:hover:text-black;
+  }
+
+  .minimal-input {
+    @apply w-full border-b border-neutral-200 bg-transparent py-2 text-sm outline-none transition-colors focus:border-black disabled:opacity-50 dark:border-neutral-800 dark:focus:border-white rounded-none;
+  }
+
+  .minimal-card {
+    @apply border border-neutral-100 bg-white p-8 dark:border-neutral-900 dark:bg-black rounded-none;
   }
 }

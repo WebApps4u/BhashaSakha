@@ -76,7 +76,7 @@ export function useSpeechCaptions({
     audioContextRef.current = null
   }
 
-  const start = async () => {
+  const start = async (overrideLang?: string) => {
     if (!enabled) return
     if (status !== 'idle') return
 
@@ -96,7 +96,9 @@ export function useSpeechCaptions({
     recognition.continuous = true
     recognition.interimResults = true
     recognition.maxAlternatives = 1
-    recognition.lang = lang?.trim() ? lang.trim() : 'en-US'
+    
+    const targetLang = overrideLang || lang
+    recognition.lang = targetLang?.trim() ? targetLang.trim() : 'en-US'
 
     startTimeRef.current = performance.now()
     currentStartMsRef.current = null

@@ -17,13 +17,12 @@ function NavLink({ to, label, icon: Icon }: { to: string; label: string; icon: C
     <Link
       to={to}
       className={cn(
-        'inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition',
+        'group inline-flex items-center gap-2 px-1 py-1 text-xs font-semibold uppercase tracking-wider transition-all',
         isActive
-          ? 'bg-slate-100 text-slate-900 dark:bg-white/10 dark:text-slate-50'
-          : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-white/5 dark:hover:text-slate-50'
+          ? 'text-black dark:text-white border-b-2 border-black dark:border-white'
+          : 'text-neutral-500 hover:text-black dark:text-neutral-400 dark:hover:text-white border-b-2 border-transparent'
       )}
     >
-      <Icon className="h-4 w-4" />
       {label}
     </Link>
   )
@@ -51,21 +50,20 @@ export default function AppShell() {
   const isFullBleed = location.pathname.startsWith('/live') || location.pathname.startsWith('/s/')
 
   return (
-    <div className="min-h-screen bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-50">
+    <div className="min-h-screen bg-white text-black dark:bg-black dark:text-white">
       <div
         className={cn(
-          'fixed left-0 top-0 z-50 h-0.5 w-full bg-indigo-500 transition-opacity',
+          'fixed left-0 top-0 z-50 h-0.5 w-full bg-black transition-opacity dark:bg-white',
           pending > 0 || routeLoading ? 'opacity-100' : 'opacity-0',
         )}
       />
-      <header className="border-b border-slate-200 bg-white/80 backdrop-blur dark:border-white/10 dark:bg-slate-950/80">
-        <div className={cn('mx-auto flex items-center justify-between px-4', isFullBleed ? 'max-w-6xl py-3' : 'max-w-6xl py-3')}>
-          <div className="flex items-center gap-3">
-            <Link to="/live" className="inline-flex items-center gap-2 text-sm font-semibold tracking-tight">
-              <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-slate-900 text-white dark:bg-white dark:text-slate-900">B</span>
+      <header className="sticky top-0 z-40 border-b border-neutral-200 bg-white/80 backdrop-blur-md dark:border-neutral-800 dark:bg-black/80">
+        <div className={cn('mx-auto flex items-center justify-between px-6', isFullBleed ? 'max-w-[1400px] py-4' : 'max-w-6xl py-4')}>
+          <div className="flex items-center gap-8">
+            <Link to="/live" className="text-xl font-bold uppercase tracking-widest text-black dark:text-white">
               BhashaSakha
             </Link>
-            <div className="hidden items-center gap-1 sm:flex">
+            <div className="hidden items-center gap-6 sm:flex">
               <NavLink to="/live" label={t('nav.live')} icon={Mic2} />
               {user ? <NavLink to="/dashboard" label={t('nav.dashboard')} icon={LayoutDashboard} /> : null}
               {user ? <NavLink to="/usage" label="Usage" icon={Gauge} /> : null}
@@ -74,18 +72,18 @@ export default function AppShell() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-4">
             <button
               type="button"
               onClick={toggle}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
+              className="inline-flex h-9 w-9 items-center justify-center text-neutral-500 transition hover:text-black dark:text-neutral-400 dark:hover:text-white"
               aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
               title={theme === 'dark' ? 'Light theme' : 'Dark theme'}
             >
               {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
             {!isReady ? (
-              <div className="h-9 w-28 animate-pulse rounded-lg bg-slate-100 dark:bg-white/10" />
+              <div className="h-9 w-24 animate-pulse bg-neutral-100 dark:bg-neutral-900" />
             ) : user ? (
               <button
                 type="button"
@@ -93,17 +91,15 @@ export default function AppShell() {
                   await signOut()
                   navigate('/live')
                 }}
-                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
+                className="text-xs font-semibold uppercase tracking-wider text-neutral-500 hover:text-black dark:text-neutral-400 dark:hover:text-white"
               >
-                <LogOut className="h-4 w-4" />
                 {t('auth.signOut')}
               </button>
             ) : (
               <Link
                 to="/login"
-                className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100"
+                className="text-xs font-bold uppercase tracking-widest text-black hover:underline dark:text-white"
               >
-                <LogIn className="h-4 w-4" />
                 {t('auth.signIn')}
               </Link>
             )}
@@ -111,7 +107,7 @@ export default function AppShell() {
         </div>
       </header>
 
-      <main className={cn(isFullBleed ? 'px-0 py-0' : 'mx-auto max-w-6xl px-4 py-6')}>
+      <main className={cn(isFullBleed ? 'px-0 py-0' : 'mx-auto max-w-6xl px-4 py-12')}>
         <Outlet />
       </main>
     </div>

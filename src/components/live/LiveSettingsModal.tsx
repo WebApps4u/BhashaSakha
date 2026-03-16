@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Volume2 } from 'lucide-react'
+import { Volume2, X } from 'lucide-react'
 import { LANGUAGES, getLanguageLabel } from '@/utils/languages'
 import { useTranslation } from 'react-i18next'
 import { UI_LOCALES, type UiLocale } from '@/lib/i18n'
@@ -58,25 +58,29 @@ export default function LiveSettingsModal({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/20 p-4 dark:bg-black/60" role="dialog" aria-modal="true">
-      <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-5 shadow-xl dark:border-white/10 dark:bg-slate-950">
-        <div className="flex items-start justify-between gap-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/80 p-4 backdrop-blur-sm dark:bg-black/80" role="dialog" aria-modal="true">
+      <div className="w-full max-w-2xl border border-neutral-200 bg-white p-8 shadow-2xl dark:border-neutral-800 dark:bg-black">
+        <div className="flex items-start justify-between mb-8">
           <div>
-            <div className="text-sm font-semibold">{t('settings.sessionTitle')}</div>
-            <div className="mt-1 text-xs text-slate-500 dark:text-slate-300">{t('settings.advanced')}</div>
+            <h2 className="text-xl font-bold uppercase tracking-widest text-black dark:text-white">{t('settings.sessionTitle')}</h2>
+            <div className="mt-1 text-xs uppercase tracking-wider text-neutral-500 dark:text-neutral-400">{t('settings.advanced')}</div>
           </div>
-          <button type="button" onClick={onClose} className="text-sm text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-50">
-            {t('common.close')}
+          <button 
+            type="button" 
+            onClick={onClose} 
+            className="group p-2 text-black transition-colors hover:bg-black hover:text-white dark:text-white dark:hover:bg-white dark:hover:text-black"
+          >
+            <X className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <label className="grid gap-1 text-xs text-slate-600 dark:text-slate-300">
+        <div className="grid gap-8 md:grid-cols-2">
+          <label className="grid gap-2 text-xs font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
             {t('settings.uiLanguage')}
             <select
               value={uiLocale}
               onChange={(e) => setUiLocale(e.target.value as UiLocale)}
-              className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 dark:border-white/10 dark:bg-white/5 dark:text-slate-50"
+              className="minimal-input text-black dark:text-white"
             >
               {UI_LOCALES.map((l) => (
                 <option key={l.code} value={l.code}>
@@ -86,12 +90,12 @@ export default function LiveSettingsModal({
             </select>
           </label>
 
-          <label className="grid gap-1 text-xs text-slate-600 dark:text-slate-300">
+          <label className="grid gap-2 text-xs font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
             {t('settings.currentSpeaker')}
             <select
               value={speakerLabel}
               onChange={(e) => onSpeakerLabel(e.target.value)}
-              className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 dark:border-white/10 dark:bg-white/5 dark:text-slate-50"
+              className="minimal-input text-black dark:text-white"
             >
               {SPEAKERS.map((s) => (
                 <option key={s} value={s}>
@@ -101,12 +105,12 @@ export default function LiveSettingsModal({
             </select>
           </label>
 
-          <label className="grid gap-1 text-xs text-slate-600 dark:text-slate-300">
+          <label className="grid gap-2 text-xs font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
             {t('settings.primaryTarget')}
             <select
               value={targetLang}
               onChange={(e) => onTargetLang(e.target.value)}
-              className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 dark:border-white/10 dark:bg-white/5 dark:text-slate-50"
+              className="minimal-input text-black dark:text-white"
             >
               {LANGUAGES.map((l) => (
                 <option key={l.code} value={l.code}>
@@ -117,12 +121,13 @@ export default function LiveSettingsModal({
           </label>
 
           <div className="md:col-span-2">
-            <div className="text-xs text-slate-600 dark:text-slate-300">{t('settings.translateToMulti')}</div>
-            <div className="mt-2 grid grid-cols-2 gap-2">
+            <div className="text-xs font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400 mb-4">{t('settings.translateToMulti')}</div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2">
               {LANGUAGES.map((l) => {
                 const checked = targetLangs.includes(l.code)
                 return (
-                  <label key={l.code} className="inline-flex items-center gap-2 text-xs text-slate-700 dark:text-slate-200">
+                  <label key={l.code} className="inline-flex items-center gap-3 text-sm text-black dark:text-white cursor-pointer group">
+                    <div className={`h-4 w-4 border border-neutral-300 transition-colors group-hover:border-black dark:border-neutral-700 dark:group-hover:border-white ${checked ? 'bg-black dark:bg-white' : 'bg-transparent'}`} />
                     <input
                       type="checkbox"
                       checked={checked}
@@ -136,43 +141,43 @@ export default function LiveSettingsModal({
                           onTtsLang(next[0] ?? '')
                         }
                       }}
-                      className="h-4 w-4 rounded border-slate-300 dark:border-white/20"
+                      className="hidden"
                     />
-                    {l.label}
+                    <span className="uppercase tracking-wide text-xs">{l.label}</span>
                   </label>
                 )
               })}
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 md:col-span-2 dark:border-white/10 dark:bg-white/5">
-            <div className="flex items-center justify-between gap-3">
+          <div className="border border-neutral-200 p-6 md:col-span-2 dark:border-neutral-800">
+            <div className="flex items-center justify-between gap-3 mb-6">
               <div>
-                <div className="text-sm font-semibold">{t('settings.voicePlayback')}</div>
-                <div className="mt-1 text-xs text-slate-600 dark:text-slate-300">{t('settings.voicePlaybackHint')}</div>
+                <div className="text-sm font-bold uppercase tracking-wider text-black dark:text-white">{t('settings.voicePlayback')}</div>
+                <div className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">{t('settings.voicePlaybackHint')}</div>
               </div>
               <button
                 type="button"
                 onClick={() => onTtsEnabled(!ttsEnabled)}
                 className={
-                  'inline-flex h-10 items-center gap-2 rounded-xl px-4 text-sm transition ' +
+                  'minimal-btn text-xs px-4 py-2 ' +
                   (ttsEnabled
-                    ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
-                    : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10')
+                    ? 'bg-black text-white dark:bg-white dark:text-black'
+                    : 'border border-neutral-200 text-neutral-500 hover:border-black hover:text-black dark:border-neutral-800 dark:hover:border-white dark:hover:text-white')
                 }
               >
-                <Volume2 className="h-4 w-4" />
+                <Volume2 className="h-4 w-4 mr-2" />
                 {ttsEnabled ? t('common.on') : t('common.off')}
               </button>
             </div>
 
-            <div className="mt-3 grid gap-1 text-xs text-slate-600 dark:text-slate-300">
+            <div className="grid gap-2 text-xs font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400 mb-6">
               {t('settings.ttsLanguage')}
               <select
                 value={ttsLang}
                 onChange={(e) => onTtsLang(e.target.value)}
                 disabled={!ttsEnabled}
-                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-50"
+                className="minimal-input text-black dark:text-white"
               >
                 {targetLangs.length === 0 ? <option value="">Select</option> : null}
                 {targetLangs.map((code) => (
@@ -184,7 +189,7 @@ export default function LiveSettingsModal({
             </div>
 
             {stylePromptAllowed ? (
-              <label className="mt-3 grid gap-1 text-xs text-slate-600 dark:text-slate-300">
+              <label className="grid gap-2 text-xs font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400 mb-6">
                 {t('settings.ttsStylePrompt')}
                 <textarea
                   rows={3}
@@ -192,20 +197,20 @@ export default function LiveSettingsModal({
                   disabled={!ttsEnabled}
                   onChange={(e) => setTtsStylePrompt(e.target.value)}
                   placeholder={t('settings.ttsStylePromptPlaceholder')}
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-50"
+                  className="w-full border border-neutral-200 bg-transparent p-3 text-sm outline-none focus:border-black disabled:opacity-50 dark:border-neutral-800 dark:focus:border-white text-black dark:text-white placeholder:text-neutral-300 dark:placeholder:text-neutral-700"
                 />
-                <div className="text-[11px] text-slate-500 dark:text-slate-300">{t('settings.ttsStylePromptHint')}</div>
+                <div className="text-[10px] normal-case tracking-normal text-neutral-400">{t('settings.ttsStylePromptHint')}</div>
               </label>
             ) : null}
 
-            <div className="mt-3 grid gap-3 md:grid-cols-2">
-              <label className="grid gap-1 text-xs text-slate-600 dark:text-slate-300">
+            <div className="grid gap-6 md:grid-cols-2 mb-6">
+              <label className="grid gap-2 text-xs font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
                 {t('settings.voice')}
                 <select
                   value={ttsVoiceUri}
                   disabled={!ttsEnabled}
                   onChange={(e) => setTtsVoiceUri(e.target.value)}
-                  className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-50"
+                  className="minimal-input text-black dark:text-white"
                 >
                   <option value="">Auto</option>
                   {voices
@@ -219,16 +224,15 @@ export default function LiveSettingsModal({
                       </option>
                     ))}
                 </select>
-                <div className="text-[11px] text-slate-500 dark:text-slate-300">{t('settings.voiceHint')}</div>
               </label>
 
-              <label className="grid gap-1 text-xs text-slate-600 dark:text-slate-300">
+              <label className="grid gap-2 text-xs font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
                 {t('settings.genderPreference')}
                 <select
                   value={ttsGender}
                   disabled={!ttsEnabled}
                   onChange={(e) => setTtsGender(e.target.value as TtsGenderPreference)}
-                  className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-50"
+                  className="minimal-input text-black dark:text-white"
                 >
                   <option value="any">{t('settings.genderAny')}</option>
                   <option value="female">{t('settings.genderFemale')}</option>
@@ -237,8 +241,8 @@ export default function LiveSettingsModal({
               </label>
             </div>
 
-            <div className="mt-3 grid gap-3 md:grid-cols-3">
-              <label className="grid gap-1 text-xs text-slate-600 dark:text-slate-300">
+            <div className="grid gap-6 md:grid-cols-3">
+              <label className="grid gap-2 text-xs font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
                 {t('settings.toneRate')}
                 <input
                   type="range"
@@ -248,9 +252,10 @@ export default function LiveSettingsModal({
                   value={ttsRate}
                   disabled={!ttsEnabled}
                   onChange={(e) => setTtsRate(Number(e.target.value))}
+                  className="accent-black dark:accent-white"
                 />
               </label>
-              <label className="grid gap-1 text-xs text-slate-600 dark:text-slate-300">
+              <label className="grid gap-2 text-xs font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
                 {t('settings.tonePitch')}
                 <input
                   type="range"
@@ -260,9 +265,10 @@ export default function LiveSettingsModal({
                   value={ttsPitch}
                   disabled={!ttsEnabled}
                   onChange={(e) => setTtsPitch(Number(e.target.value))}
+                  className="accent-black dark:accent-white"
                 />
               </label>
-              <label className="grid gap-1 text-xs text-slate-600 dark:text-slate-300">
+              <label className="grid gap-2 text-xs font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
                 {t('settings.toneVolume')}
                 <input
                   type="range"
@@ -272,24 +278,25 @@ export default function LiveSettingsModal({
                   value={ttsVolume}
                   disabled={!ttsEnabled}
                   onChange={(e) => setTtsVolume(Number(e.target.value))}
+                  className="accent-black dark:accent-white"
                 />
               </label>
             </div>
           </div>
         </div>
 
-        <div className="mt-4 flex items-center justify-between">
+        <div className="mt-8 flex items-center justify-between border-t border-neutral-100 pt-6 dark:border-neutral-800">
           {editorHref ? (
-            <Link to={editorHref} className="text-sm font-medium text-slate-900 underline dark:text-slate-50">
+            <Link to={editorHref} className="text-xs font-bold uppercase tracking-widest text-black underline dark:text-white">
               {t('live.openEditor')}
             </Link>
           ) : (
-            <div className="text-xs text-slate-500 dark:text-slate-300">Start capture to create a session.</div>
+            <div className="text-xs text-neutral-400">Start capture to create a session.</div>
           )}
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100"
+            className="minimal-btn-primary"
           >
             {t('common.done')}
           </button>
