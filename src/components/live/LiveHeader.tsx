@@ -6,6 +6,8 @@ import { cn } from '@/lib/utils'
 
 export type LiveMode = 'transcribe' | 'translate' | 'dubbing'
 
+type SessionMode = 'general' | 'banking' | 'interview'
+
 function LangSelect({
   value,
   onChange,
@@ -66,9 +68,36 @@ function Tab({
   )
 }
 
+function ModeChip({
+  active,
+  children,
+  onClick,
+}: {
+  active?: boolean
+  children: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'px-4 py-2 text-[10px] font-bold uppercase tracking-[0.22em] transition-colors border',
+        active
+          ? 'border-black bg-black text-white dark:border-white dark:bg-white dark:text-black'
+          : 'border-neutral-200 text-neutral-500 hover:border-black hover:text-black dark:border-neutral-800 dark:text-neutral-400 dark:hover:border-white dark:hover:text-white'
+      )}
+    >
+      {children}
+    </button>
+  )
+}
+
 export default function LiveHeader({
   mode,
   onMode,
+  sessionMode,
+  onSessionMode,
   privacy,
   onPrivacy,
   sourceLang,
@@ -83,6 +112,8 @@ export default function LiveHeader({
 }: {
   mode: LiveMode
   onMode: (mode: LiveMode) => void
+  sessionMode: SessionMode
+  onSessionMode: (mode: SessionMode) => void
   privacy: 'private' | 'shareable'
   onPrivacy: (privacy: 'private' | 'shareable') => void
   sourceLang: string
@@ -132,6 +163,18 @@ export default function LiveHeader({
           >
             {t('live.shareable')}
           </button>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <ModeChip active={sessionMode === 'general'} onClick={() => onSessionMode('general')}>
+            General
+          </ModeChip>
+          <ModeChip active={sessionMode === 'banking'} onClick={() => onSessionMode('banking')}>
+            Banking
+          </ModeChip>
+          <ModeChip active={sessionMode === 'interview'} onClick={() => onSessionMode('interview')}>
+            Interview
+          </ModeChip>
         </div>
 
         {/* Mode Tabs */}

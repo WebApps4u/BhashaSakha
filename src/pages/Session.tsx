@@ -9,6 +9,7 @@ import LiveTab from '@/components/session/LiveTab'
 import SessionHeader from '@/components/session/SessionHeader'
 import { useSettingsStore } from '@/store/settingsStore'
 import { playServerTts } from '@/utils/tts'
+import { extractRisks } from '@/utils/risk'
 
 type SessionRow = {
   id: string
@@ -17,6 +18,7 @@ type SessionRow = {
   source_lang: string
   target_langs: string[]
   visibility: 'private' | 'public'
+  session_mode: 'general' | 'banking' | 'interview'
 }
 
 type SegmentRow = Segment & {
@@ -34,6 +36,14 @@ type TranslationRow = {
   text: string
 }
 
+type RiskRow = {
+  id: string
+  segment_id: string
+  risk_type: string
+  value_redacted: string
+  confirmed: boolean
+}
+
 export default function Session() {
   const navigate = useNavigate()
   const params = useParams()
@@ -46,6 +56,7 @@ export default function Session() {
   const [session, setSession] = useState<SessionRow | null>(null)
   const [segments, setSegments] = useState<SegmentRow[]>([])
   const [translationsBySegmentId, setTranslationsBySegmentId] = useState<Record<string, TranslationRow[]>>({})
+  const [risksBySegmentId, setRisksBySegmentId] = useState<Record<string, RiskRow[]>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -84,7 +95,7 @@ export default function Session() {
 
       const { data: sessionData, error: sessionErr } = await supabase
         .from('sessions')
-        .select('id,owner_id,title,visibility,source_lang,target_langs')
+        .select('id,owner_id,title,visibility,source_lang,target_langs,session_mode')
         .eq('id', sessionId)
         .single()
       if (!mounted) return
@@ -122,6 +133,16 @@ export default function Session() {
             map[row.segment_id] = map[row.segment_id] ? [...map[row.segment_id], row] : [row]
           }
           setTranslationsBySegmentId(map)
+
+          const { data: rData } = await supabase
+            .from('segment_risks')
+            .select('id,segment_id,risk_type,value_redacted,confirmed')
+            .in('segment_id', ids)
+          const rmap: Record<string, RiskRow[]> = {}
+          for (const row of (rData ?? []) as RiskRow[]) {
+            rmap[row.segment_id] = rmap[row.segment_id] ? [...rmap[row.segment_id], row] : [row]
+          }
+          setRisksBySegmentId(rmap)
         }
       }
       setLoading(false)
@@ -256,6 +277,27 @@ export default function Session() {
 
       setSegments((prev) => prev.map((s) => (s.id === optimistic.id ? { ...s, id: data.id } : s)))
 
+      if (session?.session_mode === 'banking') {
+        const risks = extractRisks(text)
+        if (risks.length) {
+          const rows = risks.map((r) => ({
+            segment_id: data.id,
+            risk_type: r.type,
+            value_raw: r.raw,
+            value_redacted: r.redacted,
+            confirmed: false,
+          }))
+          const { data: inserted } = await supabase
+            .from('segment_risks')
+            .insert(rows)
+            .select('id,segment_id,risk_type,value_redacted,confirmed')
+          const riskRows = (inserted ?? []) as RiskRow[]
+          if (riskRows.length) {
+            setRisksBySegmentId((prev) => ({ ...prev, [data.id]: riskRows }))
+          }
+        }
+      }
+
       if (!targetLangs.length) return
 
       setTranslatingSegmentIds((prev) => ({ ...prev, [data.id]: true }))
@@ -331,6 +373,27 @@ export default function Session() {
   useEffect(() => {
     if (speech.error) setError(speech.error)
   }, [speech.error])
+
+  const toggleRiskConfirmed = async (riskId: string, next: boolean) => {
+    const { data, error: upErr } = await supabase
+      .from('segment_risks')
+      .update({ confirmed: next })
+      .eq('id', riskId)
+      .select('id,segment_id,risk_type,value_redacted,confirmed')
+      .single()
+    if (upErr || !data) {
+      setError(upErr?.message ?? 'Failed to update risk')
+      return
+    }
+
+    const row = data as RiskRow
+    setRisksBySegmentId((prev) => {
+      const list = prev[row.segment_id] ?? []
+      const idx = list.findIndex((r) => r.id === row.id)
+      const nextList = idx >= 0 ? list.map((r) => (r.id === row.id ? row : r)) : [...list, row]
+      return { ...prev, [row.segment_id]: nextList }
+    })
+  }
 
   useEffect(() => {
     if (!isOwner || !sessionId) return
@@ -431,6 +494,9 @@ export default function Session() {
           interim={speech.interim}
           segments={segments.map((s) => ({ id: s.id, seq: s.seq, speaker_label: s.speaker_label, detected_lang: s.detected_lang, text: s.text, is_edited: s.is_edited }))}
           translationsBySegmentId={translationsBySegmentId}
+          risksBySegmentId={risksBySegmentId}
+          canConfirm={isOwner}
+          onToggleRiskConfirmed={(riskId, next) => void toggleRiskConfirmed(riskId, next)}
           speakerLabel={speakerLabel}
           onSpeakerLabel={setSpeakerLabel}
           targetLangs={targetLangs}

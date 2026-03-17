@@ -1,5 +1,5 @@
 import ControlsPanel from '@/components/session/ControlsPanel'
-import SegmentsPanel, { type SegmentRow as SegmentPreview, type TranslationRow } from '@/components/session/SegmentsPanel'
+import SegmentsPanel, { type SegmentRow as SegmentPreview, type TranslationRow, type RiskRow } from '@/components/session/SegmentsPanel'
 
 type SpeechStatus = 'idle' | 'listening' | 'paused'
 
@@ -10,6 +10,9 @@ export default function LiveTab({
   interim,
   segments,
   translationsBySegmentId,
+  risksBySegmentId,
+  canConfirm,
+  onToggleRiskConfirmed,
   speakerLabel,
   onSpeakerLabel,
   targetLangs,
@@ -39,6 +42,9 @@ export default function LiveTab({
   interim: string
   segments: SegmentPreview[]
   translationsBySegmentId: Record<string, TranslationRow[]>
+  risksBySegmentId: Record<string, RiskRow[]>
+  canConfirm: boolean
+  onToggleRiskConfirmed: (riskId: string, next: boolean) => void
   speakerLabel: string
   onSpeakerLabel: (label: string) => void
   targetLangs: string[]
@@ -98,6 +104,9 @@ export default function LiveTab({
           status={status}
           translationsBySegmentId={translationsBySegmentId}
           isTranslating={isTranslating}
+          risksBySegmentId={risksBySegmentId}
+          canConfirm={canConfirm}
+          onToggleRiskConfirmed={onToggleRiskConfirmed}
         />
       </div>
     </div>

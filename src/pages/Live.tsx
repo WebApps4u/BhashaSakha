@@ -22,6 +22,8 @@ export default function Live() {
   const [mode, setMode] = useState<LiveMode>('translate')
   const [privacy, setPrivacy] = useState<'private' | 'shareable'>('private')
 
+  const [sessionMode, setSessionMode] = useState<'general' | 'banking' | 'interview'>('general')
+
   const [sourceLang, setSourceLang] = useState('en')
   const [targetLang, setTargetLang] = useState('hi')
   const [targetLangs, setTargetLangs] = useState<string[]>(['hi'])
@@ -42,6 +44,7 @@ export default function Live() {
     userId: user?.id ?? null,
     privacy,
     sourceLang,
+    sessionMode,
     isTranslateOn,
     targetLangs,
     speakerLabel,
@@ -154,6 +157,8 @@ export default function Live() {
         <LiveHeader
           mode={mode}
           onMode={setMode}
+          sessionMode={sessionMode}
+          onSessionMode={setSessionMode}
           privacy={privacy}
           onPrivacy={setPrivacy}
           sourceLang={sourceLang}
@@ -195,6 +200,7 @@ export default function Live() {
           languageChip={languageChip}
           ttsEnabled={ttsEnabled}
           onToggleTts={() => setTtsEnabled(!ttsEnabled)}
+          highlightRisks={sessionMode === 'banking'}
         />
       </div>
 
@@ -212,6 +218,8 @@ export default function Live() {
         open={showSettings}
         speakerLabel={speakerLabel}
         onSpeakerLabel={setSpeakerLabel}
+        sessionMode={sessionMode}
+        onSessionMode={setSessionMode}
         targetLang={targetLang}
         onTargetLang={(v) => {
           setTargetLang(v)

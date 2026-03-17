@@ -19,18 +19,32 @@ export type TranslationRow = {
   text: string
 }
 
+export type RiskRow = {
+  id: string
+  segment_id: string
+  risk_type: string
+  value_redacted: string
+  confirmed: boolean
+}
+
 export default function SegmentsPanel({
   segments,
   interim,
   status,
   translationsBySegmentId,
   isTranslating,
+  risksBySegmentId,
+  canConfirm,
+  onToggleRiskConfirmed,
 }: {
   segments: SegmentRow[]
   interim: string
   status: SpeechStatus
   translationsBySegmentId?: Record<string, TranslationRow[]>
   isTranslating?: boolean
+  risksBySegmentId?: Record<string, RiskRow[]>
+  canConfirm?: boolean
+  onToggleRiskConfirmed?: (riskId: string, next: boolean) => void
 }) {
   return (
     <div className="minimal-card h-full">
@@ -65,6 +79,31 @@ export default function SegmentsPanel({
                 {s.is_edited ? <div className="text-[9px] uppercase tracking-widest text-neutral-400">edited</div> : null}
               </div>
               <div className="text-lg font-light leading-relaxed text-black dark:text-white">{s.text}</div>
+
+              {(risksBySegmentId?.[s.id]?.length ?? 0) > 0 ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {(risksBySegmentId?.[s.id] ?? []).map((r) => {
+                    const active = !!r.confirmed
+                    return (
+                      <button
+                        key={r.id}
+                        type="button"
+                        disabled={!canConfirm || !onToggleRiskConfirmed}
+                        onClick={() => onToggleRiskConfirmed?.(r.id, !active)}
+                        className={
+                          'border px-3 py-1 text-[10px] font-bold uppercase tracking-widest transition-colors ' +
+                          (active
+                            ? 'border-black bg-black text-white dark:border-white dark:bg-white dark:text-black'
+                            : 'border-neutral-200 text-neutral-600 hover:border-black hover:text-black dark:border-neutral-800 dark:text-neutral-300 dark:hover:border-white dark:hover:text-white')
+                        }
+                        title={r.risk_type}
+                      >
+                        {r.risk_type}: {r.value_redacted}
+                      </button>
+                    )
+                  })}
+                </div>
+              ) : null}
 
               {translationsBySegmentId?.[s.id]?.length ? (
                 <div className="mt-3 space-y-2 border-l border-neutral-200 pl-4 dark:border-neutral-800">

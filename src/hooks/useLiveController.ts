@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import { useSettingsStore } from '@/store/settingsStore'
 import { playServerTts } from '@/utils/tts'
+import { extractRisks } from '@/utils/risk'
 
 type SegmentRow = {
   id: string
@@ -22,6 +23,7 @@ export function useLiveController({
   userId,
   privacy,
   sourceLang,
+  sessionMode,
   isTranslateOn,
   targetLangs,
   speakerLabel,
@@ -31,6 +33,7 @@ export function useLiveController({
   userId: string | null
   privacy: 'private' | 'shareable'
   sourceLang: string
+  sessionMode: 'general' | 'banking' | 'interview'
   isTranslateOn: boolean
   targetLangs: string[]
   speakerLabel: string
@@ -68,6 +71,7 @@ export function useLiveController({
         source_lang: sourceLang,
         target_langs: isTranslateOn ? targetLangs : [],
         visibility: desiredVisibility,
+        session_mode: sessionMode,
         started_at: new Date().toISOString(),
       })
       .select('id')
@@ -184,6 +188,20 @@ export function useLiveController({
         .single()
       if (insertErr) throw insertErr
 
+      if (sessionMode === 'banking') {
+        const risks = extractRisks(text)
+        if (risks.length) {
+          const rows = risks.map((r) => ({
+            segment_id: data.id,
+            risk_type: r.type,
+            value_raw: r.raw,
+            value_redacted: r.redacted,
+            confirmed: false,
+          }))
+          await supabase.from('segment_risks').insert(rows)
+        }
+      }
+
       setSegments((prev) => prev.map((s) => (s.id === optimisticId ? { ...s, id: data.id } : s)))
 
       if (shouldTranslate) {
@@ -261,10 +279,15 @@ export function useLiveController({
     void (async () => {
       await supabase
         .from('sessions')
-        .update({ visibility: desiredVisibility, source_lang: sourceLang, target_langs: isTranslateOn ? targetLangs : [] })
+        .update({
+          visibility: desiredVisibility,
+          source_lang: sourceLang,
+          session_mode: sessionMode,
+          target_langs: isTranslateOn ? targetLangs : [],
+        })
         .eq('id', sessionId)
     })()
-  }, [desiredVisibility, isTranslateOn, sessionId, sourceLang, targetLangs, userId])
+  }, [desiredVisibility, isTranslateOn, sessionId, sessionMode, sourceLang, targetLangs, userId])
 
   useEffect(() => {
     if (!sessionId) return

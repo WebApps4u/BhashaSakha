@@ -1,6 +1,43 @@
 import { Volume2, VolumeX } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { cn } from '@/lib/utils'
+import { extractRisks } from '@/utils/risk'
+
+function HighlightedText({
+  text,
+  enabled,
+}: {
+  text: string
+  enabled: boolean
+}) {
+  if (!enabled) return <>{text}</>
+
+  const risks = extractRisks(text)
+  if (!risks.length) return <>{text}</>
+
+  const parts: Array<{ key: string; node: ReactNode }> = []
+  let cursor = 0
+  for (let i = 0; i < risks.length; i++) {
+    const r = risks[i]
+    if (r.start > cursor) {
+      parts.push({ key: `t-${i}-a`, node: text.slice(cursor, r.start) })
+    }
+    parts.push({
+      key: `t-${i}-b`,
+      node: (
+        <span className="bg-neutral-900/5 px-2 py-0.5 underline decoration-neutral-500/50 underline-offset-[6px] dark:bg-white/10">
+          {text.slice(r.start, r.end)}
+        </span>
+      ),
+    })
+    cursor = r.end
+  }
+  if (cursor < text.length) {
+    parts.push({ key: `t-end`, node: text.slice(cursor) })
+  }
+
+  return <>{parts.map((p) => <span key={p.key}>{p.node}</span>)}</>
+}
 
 export default function LiveCanvas({
   showRight,
@@ -12,6 +49,7 @@ export default function LiveCanvas({
   languageChip,
   ttsEnabled,
   onToggleTts,
+  highlightRisks,
 }: {
   showRight: boolean
   leftLines: Array<{ id: string; text: string }>
@@ -22,6 +60,7 @@ export default function LiveCanvas({
   languageChip: string
   ttsEnabled: boolean
   onToggleTts?: () => void
+  highlightRisks?: boolean
 }) {
   const leftScrollRef = useRef<HTMLDivElement | null>(null)
   const rightScrollRef = useRef<HTMLDivElement | null>(null)
@@ -59,13 +98,13 @@ export default function LiveCanvas({
                 {leftLines.map((l) => (
                   <div key={l.id} className="animate-in fade-in slide-in-from-bottom-4 duration-700">
                     <div className="text-3xl font-extralight leading-tight tracking-tight text-black dark:text-white md:text-5xl lg:text-6xl opacity-90">
-                      {l.text.toLowerCase()}
+                      <HighlightedText text={l.text.toLowerCase()} enabled={!!highlightRisks} />
                     </div>
                   </div>
                 ))}
                 {interim ? (
                   <div className="text-3xl font-extralight leading-tight tracking-tight text-neutral-300 dark:text-neutral-600 md:text-5xl lg:text-6xl">
-                    {interim.toLowerCase()}
+                    <HighlightedText text={interim.toLowerCase()} enabled={!!highlightRisks} />
                   </div>
                 ) : null}
               </div>
@@ -86,7 +125,13 @@ export default function LiveCanvas({
                   {rightLines.map((l) => (
                     <div key={l.id} className="animate-in fade-in slide-in-from-bottom-4 duration-700">
                       <div className="text-3xl font-extralight leading-tight tracking-tight text-black dark:text-white md:text-5xl lg:text-6xl opacity-90">
-                        {l.text || (translatingIds[l.id] ? <span className="animate-pulse text-neutral-200">...</span> : '')}
+                        {l.text ? (
+                          <HighlightedText text={l.text} enabled={!!highlightRisks} />
+                        ) : translatingIds[l.id] ? (
+                          <span className="animate-pulse text-neutral-200">...</span>
+                        ) : (
+                          ''
+                        )}
                       </div>
                     </div>
                   ))}
