@@ -74,6 +74,71 @@ const clampAttempts = (n: unknown) => {
 
 const isRetryableStatus = (status: number) => status === 408 || status === 429 || status >= 500
 
+type GeminiGenerateContentModelCache = {
+  expiresAtMs: number
+  modelNames: string[]
+}
+
+const geminiGenerateContentModelCache = new Map<string, GeminiGenerateContentModelCache>()
+
+const listGeminiGenerateContentModels = async (baseUrl: string, apiKey: string) => {
+  const normalizedBase = baseUrl.replace(/\/$/, '')
+  const cacheKey = `${normalizedBase}|${apiKey}`
+  const cached = geminiGenerateContentModelCache.get(cacheKey)
+  const now = Date.now()
+  if (cached && cached.expiresAtMs > now) return cached.modelNames
+
+  const url = `${normalizedBase}/v1beta/models`
+  const { resp, text } = await fetchWithTimeout(
+    url,
+    {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
+    },
+    15_000,
+  )
+  if (!resp.ok) throw new Error(`Gemini ListModels error: ${resp.status} ${text.slice(0, 200)}`)
+
+  const parsed = JSON.parse(text) as any
+  const models = Array.isArray(parsed?.models) ? parsed.models : []
+  const names = models
+    .filter((m: any) => Array.isArray(m?.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+    .map((m: any) => String(m?.name ?? ''))
+    .filter(Boolean)
+    .map((n: string) => (n.startsWith('models/') ? n.slice('models/'.length) : n))
+
+  geminiGenerateContentModelCache.set(cacheKey, { expiresAtMs: now + 10 * 60 * 1000, modelNames: names })
+  return names
+}
+
+const pickFallbackGeminiModel = async ({ baseUrl, apiKey, requested }: { baseUrl: string; apiKey: string; requested: string }) => {
+  const available = await listGeminiGenerateContentModels(baseUrl, apiKey)
+  if (!available.length) return null
+
+  const wantPro = /\bpro\b/i.test(requested)
+  const wantFlash = /\bflash\b/i.test(requested) || !wantPro
+
+  const preferredOrder: RegExp[] = wantPro
+    ? [/gemini-2\.5.*pro/i, /gemini-2\.0.*pro/i, /gemini-1\.5.*pro/i, /gemini.*pro/i]
+    : [/gemini-2\.5.*flash/i, /gemini-2\.0.*flash/i, /gemini-1\.5.*flash/i, /gemini.*flash/i]
+
+  for (const re of preferredOrder) {
+    const found = available.find((n) => re.test(n))
+    if (found) return found
+  }
+
+  if (wantFlash) {
+    const anyFlash = available.find((n) => /flash/i.test(n))
+    if (anyFlash) return anyFlash
+  }
+
+  const anyGemini = available.find((n) => /gemini/i.test(n))
+  return anyGemini ?? available[0]
+}
+
 const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs: number) => {
   const controller = new AbortController()
   const t = setTimeout(() => controller.abort(), timeoutMs)
@@ -260,8 +325,9 @@ const callGeminiGenerateContent = async ({
             },
     })
 
-  const call = async (apiVersion: 'v1' | 'v1beta') => {
-    const url = `${normalizedBase}/${apiVersion}/models/${encodeURIComponent(model)}:generateContent`
+  const call = async (apiVersion: 'v1' | 'v1beta', overrideModel?: string) => {
+    const useModel = overrideModel ?? model
+    const url = `${normalizedBase}/${apiVersion}/models/${encodeURIComponent(useModel)}:generateContent`
     const { resp, text } = await fetchWithTimeout(
       url,
       {
@@ -278,9 +344,35 @@ const callGeminiGenerateContent = async ({
     return { status: resp.status, ok: resp.ok, raw: text, content }
   }
 
+  const isModelNotFound = (raw: string) => {
+    const s = raw.toLowerCase()
+    return s.includes('not found') || s.includes('no longer available') || s.includes('is not supported')
+  }
+
   const primary = await call('v1beta')
   if (primary.ok) return primary
-  if (primary.status === 404 || primary.status === 400) return await call('v1')
+
+  if (primary.status === 404 || primary.status === 400) {
+    const fallbackV1 = await call('v1')
+    if (fallbackV1.ok) return fallbackV1
+
+    if ((primary.status === 404 && isModelNotFound(primary.raw)) || (fallbackV1.status === 404 && isModelNotFound(fallbackV1.raw))) {
+      try {
+        const alt = await pickFallbackGeminiModel({ baseUrl, apiKey, requested: model })
+        if (alt && alt !== model) {
+          const altPrimary = await call('v1beta', alt)
+          if (altPrimary.ok) return altPrimary
+          if (altPrimary.status === 404 || altPrimary.status === 400) return await call('v1', alt)
+          return altPrimary
+        }
+      } catch {
+        geminiGenerateContentModelCache.clear()
+      }
+    }
+
+    return fallbackV1
+  }
+
   return primary
 }
 

@@ -203,40 +203,49 @@ export function useLiveController({
       }
 
       if (!shouldTranslate || !translatePromise) return
-      enqueue(async () => {
-        try {
-          const result = await translatePromise
+
+      void translatePromise
+        .then((result) => {
           const rows = Object.entries(result.translations).map(([lang, translatedText]) => ({
             segment_id: data.id,
             target_lang: lang,
             text: translatedText,
           }))
+
           setTranslationsBySegmentId((prev) => ({ ...prev, [data.id]: rows }))
-
-          if (ttsEnabled && ttsLang) {
-            const speakText = rows.find((r) => r.target_lang === ttsLang)?.text
-            if (speakText) {
-              await playServerTts({
-                text: speakText,
-                lang: ttsLang,
-                gender: ttsGender,
-                rate: ttsRate,
-                pitch: ttsPitch,
-                volume: ttsVolume,
-                stylePrompt: ttsStylePrompt,
-              })
-            }
-          }
-
-          await persistTranslation(data.id, result.detected, result.translations)
-        } finally {
           setTranslatingIds((prev) => {
             const next = { ...prev }
             delete next[data.id]
             return next
           })
-        }
-      })
+
+          enqueue(async () => {
+            if (ttsEnabled && ttsLang) {
+              const speakText = rows.find((r) => r.target_lang === ttsLang)?.text
+              if (speakText) {
+                await playServerTts({
+                  text: speakText,
+                  lang: ttsLang,
+                  gender: ttsGender,
+                  rate: ttsRate,
+                  pitch: ttsPitch,
+                  volume: ttsVolume,
+                  stylePrompt: ttsStylePrompt,
+                })
+              }
+            }
+
+            await persistTranslation(data.id, result.detected, result.translations)
+          })
+        })
+        .catch((err) => {
+          setTranslatingIds((prev) => {
+            const next = { ...prev }
+            delete next[data.id]
+            return next
+          })
+          setError(err instanceof Error ? err.message : 'Translation failed')
+        })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Live capture failed')
     }

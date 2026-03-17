@@ -78,8 +78,7 @@ export default function Live() {
       setSourceLang(language)
 
       await live.onFinal(payload)
-      speech.stop()
-      await speech.start(language)
+      await speech.restart(language)
     },
   })
 

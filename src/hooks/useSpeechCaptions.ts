@@ -25,6 +25,11 @@ export function useSpeechCaptions({
   const rafRef = useRef<number | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
 
+  const shouldListenRef = useRef(false)
+  const desiredLangRef = useRef<string>('en-US')
+  const restartTimerRef = useRef<number | null>(null)
+  const restartAttemptRef = useRef(0)
+
   const startTimeRef = useRef<number | null>(null)
   const currentStartMsRef = useRef<number | null>(null)
 
@@ -33,6 +38,7 @@ export function useSpeechCaptions({
   useEffect(() => {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      if (restartTimerRef.current) window.clearTimeout(restartTimerRef.current)
       micStreamRef.current?.getTracks().forEach((t) => t.stop())
       recognitionRef.current?.abort()
       audioContextRef.current?.close()
@@ -76,6 +82,102 @@ export function useSpeechCaptions({
     audioContextRef.current = null
   }
 
+  const scheduleRestart = (reason: string) => {
+    void reason
+    if (!enabled) return
+    if (!shouldListenRef.current) return
+    if (restartTimerRef.current) return
+
+    const attempt = restartAttemptRef.current
+    const delay = Math.min(2000, 200 * Math.pow(2, attempt))
+    restartAttemptRef.current = Math.min(6, attempt + 1)
+
+    restartTimerRef.current = window.setTimeout(() => {
+      restartTimerRef.current = null
+      if (!enabled) return
+      if (!shouldListenRef.current) return
+
+      try {
+        recognitionRef.current?.abort()
+      } catch {
+        // ignore
+      }
+
+      // Re-create recognition each time to avoid stuck instances
+      const Ctor = getRecognitionCtor()
+      if (!Ctor) {
+        setError('SpeechRecognition is not supported in this browser. Try Chrome on desktop.')
+        shouldListenRef.current = false
+        setStatus('idle')
+        stopMicMeter()
+        return
+      }
+
+      const recognition = new Ctor()
+      recognitionRef.current = recognition
+      recognition.continuous = true
+      recognition.interimResults = true
+      recognition.maxAlternatives = 1
+      recognition.lang = desiredLangRef.current
+
+      recognition.onerror = (e) => {
+        const errCode = (e as any).error ?? ''
+        const msg = (e as any).message || errCode || 'Speech recognition error'
+        setError(msg)
+        if (errCode === 'no-speech' || errCode === 'aborted' || errCode === 'network' || errCode === 'audio-capture') {
+          scheduleRestart(errCode)
+          return
+        }
+        shouldListenRef.current = false
+        setStatus('idle')
+        stopMicMeter()
+      }
+
+      recognition.onend = () => {
+        if (!shouldListenRef.current) {
+          setStatus('idle')
+          stopMicMeter()
+          return
+        }
+        scheduleRestart('onend')
+      }
+
+      recognition.onresult = (event) => {
+        const startRef = startTimeRef.current ?? performance.now()
+        const elapsedMs = Math.max(0, Math.round(performance.now() - startRef))
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const res = event.results[i]
+          const text = res[0]?.transcript?.trim() ?? ''
+          if (!text) continue
+
+          if (!res.isFinal) {
+            if (currentStartMsRef.current == null) currentStartMsRef.current = elapsedMs
+            setInterim(text)
+            continue
+          }
+
+          const startMs = currentStartMsRef.current ?? elapsedMs
+          const endMs = Math.max(elapsedMs, startMs + 200)
+          currentStartMsRef.current = null
+          setInterim('')
+
+          void onFinal({ text, startMs, endMs })
+        }
+      }
+
+      try {
+        recognition.start()
+        setStatus('listening')
+        setError(null)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Failed to start SpeechRecognition'
+        setError(msg)
+        scheduleRestart('start_failed')
+      }
+    }, delay)
+  }
+
   const start = async (overrideLang?: string) => {
     if (!enabled) return
     if (status !== 'idle') return
@@ -89,6 +191,13 @@ export function useSpeechCaptions({
     setError(null)
     setInterim('')
 
+    shouldListenRef.current = true
+    restartAttemptRef.current = 0
+    if (restartTimerRef.current) {
+      window.clearTimeout(restartTimerRef.current)
+      restartTimerRef.current = null
+    }
+
     await beginMicMeter()
 
     const recognition = new Ctor()
@@ -98,25 +207,39 @@ export function useSpeechCaptions({
     recognition.maxAlternatives = 1
     
     const targetLang = overrideLang || lang
-    recognition.lang = targetLang?.trim() ? targetLang.trim() : 'en-US'
+    const normalizedLang = targetLang?.trim() ? targetLang.trim() : 'en-US'
+    desiredLangRef.current = normalizedLang
+    recognition.lang = normalizedLang
 
     startTimeRef.current = performance.now()
     currentStartMsRef.current = null
 
     recognition.onerror = (e) => {
-      setError(e.message || e.error || 'Speech recognition error')
+      const errCode = (e as any).error ?? ''
+      const msg = (e as any).message || errCode || 'Speech recognition error'
+      setError(msg)
+      if (shouldListenRef.current && (errCode === 'no-speech' || errCode === 'aborted' || errCode === 'network' || errCode === 'audio-capture')) {
+        scheduleRestart(errCode)
+        return
+      }
+      shouldListenRef.current = false
       setStatus('idle')
       stopMicMeter()
     }
 
     recognition.onend = () => {
-      setStatus((s) => {
-        if (s === 'listening') {
-          stopMicMeter()
-          return 'idle'
-        }
-        return s
-      })
+      if (!shouldListenRef.current) {
+        setStatus((s) => {
+          if (s === 'listening') {
+            stopMicMeter()
+            return 'idle'
+          }
+          return s
+        })
+        return
+      }
+
+      scheduleRestart('onend')
     }
 
     recognition.onresult = (event) => {
@@ -147,9 +270,37 @@ export function useSpeechCaptions({
     setStatus('listening')
   }
 
+  const restart = async (overrideLang?: string) => {
+    if (!enabled) return
+    const nextLang = (overrideLang ?? lang)?.trim() ? (overrideLang ?? lang)!.trim() : 'en-US'
+    desiredLangRef.current = nextLang
+    restartAttemptRef.current = 0
+
+    // Keep shouldListen true so onend triggers restart
+    shouldListenRef.current = true
+    setStatus('listening')
+    setError(null)
+    setInterim('')
+
+    try {
+      recognitionRef.current?.stop()
+    } catch {
+      // ignore
+    }
+
+    // If onend doesn't fire, force a restart shortly
+    if (!restartTimerRef.current) {
+      restartTimerRef.current = window.setTimeout(() => {
+        restartTimerRef.current = null
+        scheduleRestart('manual_restart')
+      }, 250)
+    }
+  }
+
   const pause = () => {
     if (!enabled) return
     if (status !== 'listening') return
+    shouldListenRef.current = false
     recognitionRef.current?.stop()
     stopMicMeter()
     setStatus('paused')
@@ -163,6 +314,11 @@ export function useSpeechCaptions({
   }
 
   const stop = () => {
+    shouldListenRef.current = false
+    if (restartTimerRef.current) {
+      window.clearTimeout(restartTimerRef.current)
+      restartTimerRef.current = null
+    }
     recognitionRef.current?.stop()
     recognitionRef.current = null
     stopMicMeter()
@@ -170,5 +326,5 @@ export function useSpeechCaptions({
     setStatus('idle')
   }
 
-  return { isSupported, status, interim, micLevel, error, setError, start, pause, resume, stop }
+  return { isSupported, status, interim, micLevel, error, setError, start, restart, pause, resume, stop }
 }
