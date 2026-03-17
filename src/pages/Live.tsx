@@ -128,7 +128,7 @@ export default function Live() {
     }
 
     if (speech.status === 'listening') {
-      speech.stop()
+      await speech.stop()
       await live.endSession()
     }
   }

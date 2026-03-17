@@ -44,6 +44,74 @@ type RiskRow = {
   confirmed: boolean
 }
 
+type CaseFormRow = {
+  id: string
+  session_id: string
+  created_by: string
+  form_json: any
+  created_at: string
+}
+
+const formatCaseFormForCrm = (form: any) => {
+  const lines: string[] = []
+  const get = (k: string) => {
+    const v = form?.[k]
+    if (v == null) return ''
+    if (typeof v === 'string') return v.trim()
+    return JSON.stringify(v)
+  }
+
+  const section = (title: string) => {
+    if (lines.length) lines.push('')
+    lines.push(title.toUpperCase())
+  }
+
+  section('Banking Case Form')
+  const caseType = get('case_type')
+  const intent = get('customer_intent')
+  const product = get('product')
+  if (caseType) lines.push(`Case Type: ${caseType}`)
+  if (intent) lines.push(`Customer Intent: ${intent}`)
+  if (product) lines.push(`Product: ${product}`)
+
+  const summary = get('summary')
+  if (summary) {
+    section('Summary')
+    lines.push(summary)
+  }
+
+  const critical = Array.isArray(form?.critical_fields) ? form.critical_fields : []
+  if (critical.length) {
+    section('Critical Fields')
+    for (const c of critical) {
+      const type = String(c?.type ?? 'other')
+      const value = String(c?.value_redacted ?? '')
+      const confirmed = !!c?.confirmed
+      const notes = String(c?.notes ?? '').trim()
+      lines.push(`- ${type}: ${value}${confirmed ? ' (CONFIRMED)' : ''}${notes ? ` — ${notes}` : ''}`)
+    }
+  }
+
+  const actions = Array.isArray(form?.actions) ? form.actions : []
+  if (actions.length) {
+    section('Actions')
+    for (const a of actions) {
+      const action = String(a?.action ?? '').trim()
+      const owner = String(a?.owner ?? '').trim()
+      const due = String(a?.due ?? '').trim()
+      lines.push(`- ${action}${owner ? ` [${owner}]` : ''}${due ? ` (Due: ${due})` : ''}`)
+    }
+  }
+
+  const flags = Array.isArray(form?.risk_flags) ? form.risk_flags : []
+  if (flags.length) {
+    section('Risk Flags')
+    for (const f of flags) lines.push(`- ${String(f)}`)
+  }
+
+  return lines.join('\n')
+}
+
 export default function Session() {
   const navigate = useNavigate()
   const params = useParams()
@@ -57,6 +125,8 @@ export default function Session() {
   const [segments, setSegments] = useState<SegmentRow[]>([])
   const [translationsBySegmentId, setTranslationsBySegmentId] = useState<Record<string, TranslationRow[]>>({})
   const [risksBySegmentId, setRisksBySegmentId] = useState<Record<string, RiskRow[]>>({})
+  const [caseForms, setCaseForms] = useState<CaseFormRow[]>([])
+  const [caseBusy, setCaseBusy] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -143,6 +213,46 @@ export default function Session() {
             rmap[row.segment_id] = rmap[row.segment_id] ? [...rmap[row.segment_id], row] : [row]
           }
           setRisksBySegmentId(rmap)
+
+          if (s.session_mode === 'banking' && user?.id && user.id === s.owner_id) {
+            const inserts: Array<{ segment_id: string; risk_type: string; value_raw: string; value_redacted: string; confirmed: boolean }> = []
+            for (const seg of list) {
+              const existing = rmap[seg.id] ?? []
+              const existingKey = new Set(existing.map((x) => `${x.risk_type}|${x.value_redacted}`))
+              const computed = extractRisks(seg.text)
+              for (const r of computed) {
+                const key = `${r.type}|${r.redacted}`
+                if (existingKey.has(key)) continue
+                inserts.push({ segment_id: seg.id, risk_type: r.type, value_raw: r.raw, value_redacted: r.redacted, confirmed: false })
+              }
+            }
+
+            if (inserts.length) {
+              const { data: inserted } = await supabase
+                .from('segment_risks')
+                .insert(inserts)
+                .select('id,segment_id,risk_type,value_redacted,confirmed')
+
+              const insertedRows = (inserted ?? []) as RiskRow[]
+              if (insertedRows.length) {
+                setRisksBySegmentId((prev) => {
+                  const next = { ...prev }
+                  for (const row of insertedRows) {
+                    next[row.segment_id] = next[row.segment_id] ? [...next[row.segment_id], row] : [row]
+                  }
+                  return next
+                })
+              }
+            }
+          }
+
+          const { data: cfData } = await supabase
+            .from('banking_case_forms')
+            .select('id,session_id,created_by,form_json,created_at')
+            .eq('session_id', sessionId)
+            .order('created_at', { ascending: false })
+            .limit(5)
+          setCaseForms((cfData ?? []) as CaseFormRow[])
         }
       }
       setLoading(false)
@@ -375,12 +485,19 @@ export default function Session() {
   }, [speech.error])
 
   const toggleRiskConfirmed = async (riskId: string, next: boolean) => {
+    let reason: string | null = null
+    if (!next) {
+      reason = window.prompt('Reason for unconfirming this field (required):')
+      if (!reason || reason.trim().length < 3) {
+        setError('Override reason required')
+        return
+      }
+    }
+
     const { data, error: upErr } = await supabase
-      .from('segment_risks')
-      .update({ confirmed: next })
-      .eq('id', riskId)
-      .select('id,segment_id,risk_type,value_redacted,confirmed')
+      .rpc('toggle_segment_risk_confirmed', { risk_id: riskId, confirm: next, override_reason: reason })
       .single()
+
     if (upErr || !data) {
       setError(upErr?.message ?? 'Failed to update risk')
       return
@@ -393,6 +510,34 @@ export default function Session() {
       const nextList = idx >= 0 ? list.map((r) => (r.id === row.id ? row : r)) : [...list, row]
       return { ...prev, [row.segment_id]: nextList }
     })
+  }
+
+  const generateCaseForm = async () => {
+    if (!sessionId) return
+    setCaseBusy(true)
+    setError(null)
+    try {
+      const { data: sessionData } = await supabase.auth.getSession()
+      const accessToken = sessionData.session?.access_token ?? ''
+      const resp = await fetch('/api/case-form', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
+        body: JSON.stringify({ session_id: sessionId }),
+      })
+      const json = (await resp.json()) as { success?: boolean; form?: CaseFormRow; error?: string }
+      if (!resp.ok || !json.success || !json.form) {
+        setError(json.error ?? 'Failed to generate case form')
+        return
+      }
+      setCaseForms((prev) => [json.form!, ...prev].slice(0, 5))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to generate case form')
+    } finally {
+      setCaseBusy(false)
+    }
   }
 
   useEffect(() => {
@@ -487,6 +632,112 @@ export default function Session() {
       ) : null}
 
       {tab === 'live' ? (
+        <>
+          {session.session_mode === 'banking' ? (
+            <div className="minimal-card">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-sm font-bold uppercase tracking-widest text-black dark:text-white">Banking Case Form</div>
+                  <div className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">Generates a structured record from transcript + confirmed fields.</div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button type="button" disabled={!isOwner || caseBusy} onClick={() => void generateCaseForm()} className="minimal-btn-primary disabled:opacity-50">
+                    {caseBusy ? 'Generating…' : 'Generate'}
+                  </button>
+                  {caseForms[0]?.form_json ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => void navigator.clipboard.writeText(formatCaseFormForCrm(caseForms[0].form_json))}
+                        className="minimal-btn-outline"
+                      >
+                        Copy for CRM
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void navigator.clipboard.writeText(JSON.stringify(caseForms[0].form_json, null, 2))}
+                        className="minimal-btn-outline"
+                      >
+                        Copy JSON
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+              </div>
+
+              {caseForms[0]?.form_json ? (
+                <div className="mt-8 space-y-8">
+                  <div className="grid gap-6 md:grid-cols-2">
+                    {(['product', 'case_type', 'customer_intent', 'summary'] as const).map((k) => (
+                      <div key={k} className="border border-neutral-100 p-5 dark:border-neutral-900">
+                        <div className="text-[10px] font-bold uppercase tracking-widest text-neutral-400">{k.replace(/_/g, ' ')}</div>
+                        <div className="mt-2 text-sm text-black dark:text-white whitespace-pre-wrap">
+                          {typeof (caseForms[0].form_json as any)?.[k] === 'string'
+                            ? String((caseForms[0].form_json as any)[k])
+                            : (caseForms[0].form_json as any)?.[k]
+                              ? JSON.stringify((caseForms[0].form_json as any)[k])
+                              : ''}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="grid gap-6 md:grid-cols-2">
+                    <div className="border border-neutral-100 p-5 dark:border-neutral-900">
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-neutral-400">Critical fields</div>
+                      <div className="mt-3 space-y-2">
+                        {(Array.isArray((caseForms[0].form_json as any)?.critical_fields) ? (caseForms[0].form_json as any).critical_fields : []).map((c: any, i: number) => (
+                          <div key={i} className="flex items-start justify-between gap-3 border border-neutral-100 px-3 py-2 text-sm dark:border-neutral-900">
+                            <div className="text-neutral-700 dark:text-neutral-200">
+                              <div className="text-[10px] font-bold uppercase tracking-widest text-neutral-400">{String(c?.type ?? 'other')}</div>
+                              <div className="mt-1 text-black dark:text-white">{String(c?.value_redacted ?? '')}</div>
+                              {c?.notes ? <div className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">{String(c.notes)}</div> : null}
+                            </div>
+                            <div className={
+                              'text-[10px] font-bold uppercase tracking-widest ' +
+                              (c?.confirmed ? 'text-black dark:text-white' : 'text-neutral-400')
+                            }>
+                              {c?.confirmed ? 'Confirmed' : 'Unconfirmed'}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="border border-neutral-100 p-5 dark:border-neutral-900">
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-neutral-400">Actions</div>
+                      <div className="mt-3 space-y-2">
+                        {(Array.isArray((caseForms[0].form_json as any)?.actions) ? (caseForms[0].form_json as any).actions : []).map((a: any, i: number) => (
+                          <div key={i} className="border border-neutral-100 px-3 py-2 text-sm dark:border-neutral-900">
+                            <div className="text-black dark:text-white">{String(a?.action ?? '')}</div>
+                            <div className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                              {a?.owner ? `Owner: ${String(a.owner)}` : ''}{a?.due ? `  •  Due: ${String(a.due)}` : ''}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {(Array.isArray((caseForms[0].form_json as any)?.risk_flags) ? (caseForms[0].form_json as any).risk_flags : []).length ? (
+                    <div className="border border-neutral-100 p-5 dark:border-neutral-900">
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-neutral-400">Risk flags</div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {(caseForms[0].form_json as any).risk_flags.map((f: any, i: number) => (
+                          <span key={i} className="border border-neutral-200 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-neutral-600 dark:border-neutral-800 dark:text-neutral-300">
+                            {String(f)}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="mt-6 text-xs text-neutral-500 dark:text-neutral-400">No case form generated yet.</div>
+              )}
+            </div>
+          ) : null}
+
         <LiveTab
           isOwner={isOwner}
           status={speech.status}
@@ -515,7 +766,7 @@ export default function Session() {
           onResume={() => void speech.resume()}
           onStop={() => {
             void (async () => {
-              speech.stop()
+              await speech.stop()
               if (isOwner) {
                 await supabase.from('sessions').update({ ended_at: new Date().toISOString() }).eq('id', sessionId)
               }
@@ -527,6 +778,7 @@ export default function Session() {
           onExportVtt={() => downloadTextFile(`session-${sessionId}.vtt`, buildVtt(segments), 'text/vtt')}
           onUploadVtt={() => void uploadLatestVtt()}
         />
+        </>
       ) : (
         <EditorPanel
           sessionId={sessionId}

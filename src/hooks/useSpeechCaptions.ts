@@ -30,6 +30,14 @@ export function useSpeechCaptions({
   const restartTimerRef = useRef<number | null>(null)
   const restartAttemptRef = useRef(0)
 
+  const interimTextRef = useRef<string>('')
+  const pendingFinalsRef = useRef<Promise<void>[]>([])
+
+  const flushTimerRef = useRef<number | null>(null)
+  const lastInterimAtRef = useRef<number>(0)
+  const lastDeliveredAtRef = useRef<number>(0)
+  const lastDeliveredTextRef = useRef<string>('')
+
   const startTimeRef = useRef<number | null>(null)
   const currentStartMsRef = useRef<number | null>(null)
 
@@ -80,6 +88,61 @@ export function useSpeechCaptions({
     micStreamRef.current = null
     audioContextRef.current?.close()
     audioContextRef.current = null
+  }
+
+  const elapsedNowMs = () => {
+    const startRef = startTimeRef.current ?? performance.now()
+    return Math.max(0, Math.round(performance.now() - startRef))
+  }
+
+  const deliverFinal = async (text: string, endMs: number) => {
+    const cleaned = text.trim()
+    if (!cleaned) return
+    const now = Date.now()
+    if (lastDeliveredTextRef.current === cleaned && now - lastDeliveredAtRef.current < 1500) return
+
+    lastDeliveredTextRef.current = cleaned
+    lastDeliveredAtRef.current = now
+
+    const startMs = currentStartMsRef.current ?? endMs
+    const safeEndMs = Math.max(endMs, startMs + 200)
+    currentStartMsRef.current = null
+    interimTextRef.current = ''
+    setInterim('')
+    try {
+      await onFinal({ text: cleaned, startMs, endMs: safeEndMs })
+    } catch {
+      // ignore
+    }
+  }
+
+  const clearFlushTimer = () => {
+    if (!flushTimerRef.current) return
+    window.clearTimeout(flushTimerRef.current)
+    flushTimerRef.current = null
+  }
+
+  const scheduleFlushOnSilence = () => {
+    if (!enabled) return
+    if (!shouldListenRef.current) return
+    if (flushTimerRef.current) return
+    flushTimerRef.current = window.setTimeout(() => {
+      flushTimerRef.current = null
+      if (!enabled) return
+      if (!shouldListenRef.current) return
+      const snapshot = interimTextRef.current
+      if (!snapshot.trim()) return
+      if (Date.now() - lastInterimAtRef.current < 1100) {
+        scheduleFlushOnSilence()
+        return
+      }
+      const endMs = elapsedNowMs()
+      const p = deliverFinal(snapshot, endMs)
+      pendingFinalsRef.current.push(p)
+      void p.finally(() => {
+        pendingFinalsRef.current = pendingFinalsRef.current.filter((x) => x !== p)
+      })
+    }, 1200)
   }
 
   const scheduleRestart = (reason: string) => {
@@ -139,12 +202,19 @@ export function useSpeechCaptions({
           stopMicMeter()
           return
         }
+        if (interimTextRef.current.trim()) {
+          clearFlushTimer()
+          const p = deliverFinal(interimTextRef.current, elapsedNowMs())
+          pendingFinalsRef.current.push(p)
+          void p.finally(() => {
+            pendingFinalsRef.current = pendingFinalsRef.current.filter((x) => x !== p)
+          })
+        }
         scheduleRestart('onend')
       }
 
       recognition.onresult = (event) => {
-        const startRef = startTimeRef.current ?? performance.now()
-        const elapsedMs = Math.max(0, Math.round(performance.now() - startRef))
+        const elapsedMs = elapsedNowMs()
 
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const res = event.results[i]
@@ -153,16 +223,18 @@ export function useSpeechCaptions({
 
           if (!res.isFinal) {
             if (currentStartMsRef.current == null) currentStartMsRef.current = elapsedMs
+            interimTextRef.current = text
             setInterim(text)
+            lastInterimAtRef.current = Date.now()
+            scheduleFlushOnSilence()
             continue
           }
-
-          const startMs = currentStartMsRef.current ?? elapsedMs
-          const endMs = Math.max(elapsedMs, startMs + 200)
-          currentStartMsRef.current = null
-          setInterim('')
-
-          void onFinal({ text, startMs, endMs })
+          clearFlushTimer()
+          const p = deliverFinal(text, elapsedMs)
+          pendingFinalsRef.current.push(p)
+          void p.finally(() => {
+            pendingFinalsRef.current = pendingFinalsRef.current.filter((x) => x !== p)
+          })
         }
       }
 
@@ -189,7 +261,12 @@ export function useSpeechCaptions({
     }
 
     setError(null)
+    interimTextRef.current = ''
     setInterim('')
+    lastDeliveredAtRef.current = 0
+    lastDeliveredTextRef.current = ''
+    lastInterimAtRef.current = 0
+    clearFlushTimer()
 
     shouldListenRef.current = true
     restartAttemptRef.current = 0
@@ -239,12 +316,20 @@ export function useSpeechCaptions({
         return
       }
 
+      if (interimTextRef.current.trim()) {
+        clearFlushTimer()
+        const p = deliverFinal(interimTextRef.current, elapsedNowMs())
+        pendingFinalsRef.current.push(p)
+        void p.finally(() => {
+          pendingFinalsRef.current = pendingFinalsRef.current.filter((x) => x !== p)
+        })
+      }
+
       scheduleRestart('onend')
     }
 
     recognition.onresult = (event) => {
-      const startRef = startTimeRef.current ?? performance.now()
-      const elapsedMs = Math.max(0, Math.round(performance.now() - startRef))
+      const elapsedMs = elapsedNowMs()
 
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const res = event.results[i]
@@ -253,16 +338,18 @@ export function useSpeechCaptions({
 
         if (!res.isFinal) {
           if (currentStartMsRef.current == null) currentStartMsRef.current = elapsedMs
+          interimTextRef.current = text
           setInterim(text)
+          lastInterimAtRef.current = Date.now()
+          scheduleFlushOnSilence()
           continue
         }
-
-        const startMs = currentStartMsRef.current ?? elapsedMs
-        const endMs = Math.max(elapsedMs, startMs + 200)
-        currentStartMsRef.current = null
-        setInterim('')
-
-        void onFinal({ text, startMs, endMs })
+        clearFlushTimer()
+        const p = deliverFinal(text, elapsedMs)
+        pendingFinalsRef.current.push(p)
+        void p.finally(() => {
+          pendingFinalsRef.current = pendingFinalsRef.current.filter((x) => x !== p)
+        })
       }
     }
 
@@ -280,6 +367,7 @@ export function useSpeechCaptions({
     shouldListenRef.current = true
     setStatus('listening')
     setError(null)
+    interimTextRef.current = ''
     setInterim('')
 
     try {
@@ -300,6 +388,14 @@ export function useSpeechCaptions({
   const pause = () => {
     if (!enabled) return
     if (status !== 'listening') return
+    if (interimTextRef.current.trim()) {
+      clearFlushTimer()
+      const p = deliverFinal(interimTextRef.current, elapsedNowMs())
+      pendingFinalsRef.current.push(p)
+      void p.finally(() => {
+        pendingFinalsRef.current = pendingFinalsRef.current.filter((x) => x !== p)
+      })
+    }
     shouldListenRef.current = false
     recognitionRef.current?.stop()
     stopMicMeter()
@@ -313,17 +409,33 @@ export function useSpeechCaptions({
     await start()
   }
 
-  const stop = () => {
+  const stop = async () => {
+    if (interimTextRef.current.trim()) {
+      clearFlushTimer()
+      const p = deliverFinal(interimTextRef.current, elapsedNowMs())
+      pendingFinalsRef.current.push(p)
+      void p.finally(() => {
+        pendingFinalsRef.current = pendingFinalsRef.current.filter((x) => x !== p)
+      })
+    }
     shouldListenRef.current = false
     if (restartTimerRef.current) {
       window.clearTimeout(restartTimerRef.current)
       restartTimerRef.current = null
     }
+    clearFlushTimer()
     recognitionRef.current?.stop()
     recognitionRef.current = null
     stopMicMeter()
+    interimTextRef.current = ''
     setInterim('')
     setStatus('idle')
+
+    const pending = pendingFinalsRef.current.slice()
+    pendingFinalsRef.current = []
+    if (pending.length) {
+      await Promise.allSettled(pending)
+    }
   }
 
   return { isSupported, status, interim, micLevel, error, setError, start, restart, pause, resume, stop }

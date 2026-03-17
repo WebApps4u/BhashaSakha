@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Volume2, X } from 'lucide-react'
 import { LANGUAGES, getLanguageLabel } from '@/utils/languages'
@@ -59,12 +60,29 @@ export default function LiveSettingsModal({
   const setTtsVolume = useSettingsStore((s) => s.setTtsVolume)
   const { voices } = useSpeechVoices()
   const { allowed: stylePromptAllowed } = useTtsStyleAccess()
+
+  useEffect(() => {
+    if (!open) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [onClose, open])
+
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/80 p-4 backdrop-blur-sm dark:bg-black/80" role="dialog" aria-modal="true">
-      <div className="w-full max-w-2xl border border-neutral-200 bg-white p-8 shadow-2xl dark:border-neutral-800 dark:bg-black">
-        <div className="flex items-start justify-between mb-8">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-white/80 p-4 backdrop-blur-sm dark:bg-black/80"
+      role="dialog"
+      aria-modal="true"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
+      <div className="w-full max-w-2xl max-h-[calc(100vh-2rem)] overflow-y-auto border border-neutral-200 bg-white shadow-2xl dark:border-neutral-800 dark:bg-black">
+        <div className="sticky top-0 z-10 flex items-start justify-between border-b border-neutral-100 bg-white/95 px-8 py-6 backdrop-blur-sm dark:border-neutral-900 dark:bg-black/95">
           <div>
             <h2 className="text-xl font-bold uppercase tracking-widest text-black dark:text-white">{t('settings.sessionTitle')}</h2>
             <div className="mt-1 text-xs uppercase tracking-wider text-neutral-500 dark:text-neutral-400">{t('settings.advanced')}</div>
@@ -72,11 +90,14 @@ export default function LiveSettingsModal({
           <button 
             type="button" 
             onClick={onClose} 
+            aria-label={t('common.close')}
             className="group p-2 text-black transition-colors hover:bg-black hover:text-white dark:text-white dark:hover:bg-white dark:hover:text-black"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
+
+        <div className="px-8 pb-8 pt-6">
 
         <div className="grid gap-8 md:grid-cols-2">
           <label className="grid gap-2 text-xs font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
@@ -302,7 +323,7 @@ export default function LiveSettingsModal({
           </div>
         </div>
 
-        <div className="mt-8 flex items-center justify-between border-t border-neutral-100 pt-6 dark:border-neutral-800">
+        <div className="sticky bottom-0 z-10 -mx-8 mt-8 flex items-center justify-between border-t border-neutral-100 bg-white/95 px-8 py-6 backdrop-blur-sm dark:border-neutral-900 dark:bg-black/95">
           {editorHref ? (
             <Link to={editorHref} className="text-xs font-bold uppercase tracking-widest text-black underline dark:text-white">
               {t('live.openEditor')}
@@ -317,6 +338,7 @@ export default function LiveSettingsModal({
           >
             {t('common.done')}
           </button>
+        </div>
         </div>
       </div>
     </div>

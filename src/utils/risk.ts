@@ -65,7 +65,9 @@ export const extractRisks = (text: string): RiskItem[] => {
 
   const out: RiskItem[] = []
 
+  // PAN (strict) + PAN (loose: ASR often drops one leading letter or inserts spaces)
   pushMatches(out, 'pan', t, /\b[A-Z]{5}\d{4}[A-Z]\b/gi)
+  pushMatches(out, 'pan', t, /\b[A-Z]{4,5}[\s-]*\d{4}[\s-]*[A-Z]\b/gi)
   pushMatches(out, 'aadhaar', t, /\b\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g)
   pushMatches(out, 'ifsc', t, /\b[A-Z]{4}0[A-Z0-9]{6}\b/gi)
   // UPI IDs (try to avoid emails by requiring no dot in domain)
@@ -90,4 +92,3 @@ export const extractRisks = (text: string): RiskItem[] => {
   }
   return deduped
 }
-

@@ -25,6 +25,7 @@ import modelsRoutes from './routes/models.js'
 import ttsRoutes from './routes/tts.js'
 import detectRoutes from './routes/detect.js'
 import detectTextRoutes from './routes/detectText.js'
+import caseFormRoutes from './routes/caseForm.js'
 
 // load env
 dotenv.config()
@@ -68,6 +69,7 @@ app.use('/api/models', modelsRoutes)
 app.use('/api/tts', ttsRoutes)
 app.use('/api/detect', detectRoutes)
 app.use('/api/detect-text', detectTextRoutes)
+app.use('/api/case-form', caseFormRoutes)
 
 const tryServeFrontend = () => {
   const enabled = (process.env.SERVE_FRONTEND ?? '').toLowerCase().trim()
