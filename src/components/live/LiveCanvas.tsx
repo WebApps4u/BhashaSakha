@@ -1,4 +1,5 @@
 import { Volume2, VolumeX } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 import { cn } from '@/lib/utils'
 
 export default function LiveCanvas({
@@ -22,6 +23,22 @@ export default function LiveCanvas({
   ttsEnabled: boolean
   onToggleTts?: () => void
 }) {
+  const leftScrollRef = useRef<HTMLDivElement | null>(null)
+  const rightScrollRef = useRef<HTMLDivElement | null>(null)
+
+  const scrollToBottom = (el: HTMLDivElement | null) => {
+    if (!el) return
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+  }
+
+  useEffect(() => {
+    scrollToBottom(leftScrollRef.current)
+  }, [leftLines.length, interim])
+
+  useEffect(() => {
+    scrollToBottom(rightScrollRef.current)
+  }, [rightLines.length])
+
   return (
     <div className="relative mx-auto h-full w-full max-w-[1600px] px-8">
       {/* Central Divider Hairline */}
@@ -31,34 +48,50 @@ export default function LiveCanvas({
 
       <div className={cn('grid h-full gap-0', showRight ? 'md:grid-cols-2' : 'max-w-3xl mx-auto')}>
         {/* Left Panel: Original Speech */}
-        <div className={cn('flex h-full flex-col justify-end pb-32 transition-all duration-500', showRight ? 'pr-12' : '')}>
-          <div className="space-y-10">
-            {leftLines.slice(-6).map((l) => (
-              <div key={l.id} className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-                <div className="text-3xl font-extralight leading-tight tracking-tight text-black dark:text-white md:text-5xl lg:text-6xl opacity-90">
-                  {l.text.toLowerCase()}
-                </div>
+        <div className={cn('h-full overflow-hidden transition-all duration-500', showRight ? 'pr-12' : '')}>
+          <div
+            ref={leftScrollRef}
+            className="h-full overflow-y-auto pb-40 pt-10 [scrollbar-width:none]"
+            style={{ WebkitOverflowScrolling: 'touch' } as any}
+          >
+            <div className="min-h-full flex flex-col justify-end">
+              <div className="space-y-10">
+                {leftLines.map((l) => (
+                  <div key={l.id} className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+                    <div className="text-3xl font-extralight leading-tight tracking-tight text-black dark:text-white md:text-5xl lg:text-6xl opacity-90">
+                      {l.text.toLowerCase()}
+                    </div>
+                  </div>
+                ))}
+                {interim ? (
+                  <div className="text-3xl font-extralight leading-tight tracking-tight text-neutral-300 dark:text-neutral-600 md:text-5xl lg:text-6xl">
+                    {interim.toLowerCase()}
+                  </div>
+                ) : null}
               </div>
-            ))}
-            {interim ? (
-              <div className="text-3xl font-extralight leading-tight tracking-tight text-neutral-300 dark:text-neutral-600 md:text-5xl lg:text-6xl">
-                {interim.toLowerCase()}
-              </div>
-            ) : null}
+            </div>
           </div>
         </div>
 
         {/* Right Panel: Translation */}
         {showRight ? (
-          <div className="flex h-full flex-col justify-end pb-32 pl-12 transition-all duration-500">
-            <div className="space-y-10">
-              {rightLines.slice(-6).map((l) => (
-                <div key={l.id} className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-                  <div className="text-3xl font-extralight leading-tight tracking-tight text-black dark:text-white md:text-5xl lg:text-6xl opacity-90">
-                    {l.text || (translatingIds[l.id] ? <span className="animate-pulse text-neutral-200">...</span> : '')}
-                  </div>
+          <div className="h-full overflow-hidden pl-12 transition-all duration-500">
+            <div
+              ref={rightScrollRef}
+              className="h-full overflow-y-auto pb-40 pt-10 [scrollbar-width:none]"
+              style={{ WebkitOverflowScrolling: 'touch' } as any}
+            >
+              <div className="min-h-full flex flex-col justify-end">
+                <div className="space-y-10">
+                  {rightLines.map((l) => (
+                    <div key={l.id} className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+                      <div className="text-3xl font-extralight leading-tight tracking-tight text-black dark:text-white md:text-5xl lg:text-6xl opacity-90">
+                        {l.text || (translatingIds[l.id] ? <span className="animate-pulse text-neutral-200">...</span> : '')}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </div>
             </div>
           </div>
         ) : null}
