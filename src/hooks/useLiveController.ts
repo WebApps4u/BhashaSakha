@@ -50,6 +50,11 @@ export function useLiveController({
   const [shareUrl, setShareUrl] = useState('')
   const [error, setError] = useState<string | null>(null)
 
+  const sessionIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    sessionIdRef.current = sessionId
+  }, [sessionId])
+
   const [segments, setSegments] = useState<SegmentRow[]>([])
   const [translationsBySegmentId, setTranslationsBySegmentId] = useState<Record<string, TranslationRow[]>>({})
   const [translatingIds, setTranslatingIds] = useState<Record<string, true>>({})
@@ -60,27 +65,56 @@ export function useLiveController({
 
   const desiredVisibility = useMemo(() => (privacy === 'shareable' ? 'public' : 'private'), [privacy])
 
-  const ensureSession = async () => {
-    if (!userId) return null
-    if (sessionId) return sessionId
-    const { data, error: err } = await supabase
-      .from('sessions')
-      .insert({
-        owner_id: userId,
-        title: 'Live session',
+  const insertSegmentViaServer = async ({
+    seq,
+    speakerLabel: spk,
+    startMs,
+    endMs,
+    text,
+  }: {
+    seq: number
+    speakerLabel: string
+    startMs: number
+    endMs: number
+    text: string
+  }) => {
+    const { data: sessionData } = await supabase.auth.getSession()
+    const accessToken = sessionData.session?.access_token ?? ''
+    if (!accessToken) throw new Error('Unauthorized')
+
+    const resp = await fetch('/api/live/segment', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        session_id: sessionIdRef.current,
+        privacy,
         source_lang: sourceLang,
-        target_langs: isTranslateOn ? targetLangs : [],
-        visibility: desiredVisibility,
         session_mode: sessionMode,
-        started_at: new Date().toISOString(),
-      })
-      .select('id')
-      .single()
-    if (err) throw err
-    setSessionId(data.id)
-    const url = `${window.location.origin}/s/${data.id}`
-    setShareUrl(url)
-    return data.id as string
+        target_langs: isTranslateOn ? targetLangs : [],
+        seq,
+        speaker_label: spk,
+        start_ms: startMs,
+        end_ms: endMs,
+        text,
+      }),
+    })
+
+    const json = (await resp.json().catch(() => null)) as any
+    if (!resp.ok || !json?.success) {
+      throw new Error(String(json?.error ?? `Failed to save segment (${resp.status})`))
+    }
+
+    const sid = String(json.session_id)
+    const segId = String(json.segment_id)
+    if (!sessionIdRef.current) {
+      sessionIdRef.current = sid
+      setSessionId(sid)
+      setShareUrl(`${window.location.origin}/s/${sid}`)
+    }
+    return { sessionId: sid, segmentId: segId }
   }
 
   const translateOnly = async (text: string, targets: string[]) => {
@@ -156,13 +190,12 @@ export function useLiveController({
   }
 
   const onFinal = async ({ text, startMs, endMs }: { text: string; startMs: number; endMs: number }) => {
+    let optimisticId: string | null = null
     try {
       if (!userId) return
-      const sid = await ensureSession()
-      if (!sid) return
 
       const seq = nextSeqRef.current++
-      const optimisticId = crypto.randomUUID()
+      optimisticId = crypto.randomUUID()
       setSegments((prev) => [...prev, { id: optimisticId, seq, speaker_label: speakerLabel, detected_lang: null, text }].sort((a, b) => a.seq - b.seq))
 
       const shouldTranslate = isTranslateOn && targetLangs.length > 0
@@ -172,27 +205,13 @@ export function useLiveController({
         setTranslatingIds((prev) => ({ ...prev, [optimisticId]: true }))
       }
 
-      const { data, error: insertErr } = await supabase
-        .from('transcript_segments')
-        .insert({
-          session_id: sid,
-          seq,
-          speaker_label: speakerLabel,
-          start_ms: startMs,
-          end_ms: endMs,
-          text,
-          is_final: true,
-          is_edited: false,
-        })
-        .select('id')
-        .single()
-      if (insertErr) throw insertErr
+      const saved = await insertSegmentViaServer({ seq, speakerLabel, startMs, endMs, text })
 
       if (sessionMode === 'banking') {
         const risks = extractRisks(text)
         if (risks.length) {
           const rows = risks.map((r) => ({
-            segment_id: data.id,
+            segment_id: saved.segmentId,
             risk_type: r.type,
             value_raw: r.raw,
             value_redacted: r.redacted,
@@ -202,19 +221,19 @@ export function useLiveController({
         }
       }
 
-      setSegments((prev) => prev.map((s) => (s.id === optimisticId ? { ...s, id: data.id } : s)))
+      setSegments((prev) => prev.map((s) => (s.id === optimisticId ? { ...s, id: saved.segmentId } : s)))
 
       if (shouldTranslate) {
         setTranslatingIds((prev) => {
           const next = { ...prev }
           delete next[optimisticId]
-          next[data.id] = true
+          next[saved.segmentId] = true
           return next
         })
         setTranslationsBySegmentId((prev) => {
           if (!prev[optimisticId]) return prev
           const next = { ...prev }
-          next[data.id] = prev[optimisticId]
+          next[saved.segmentId] = prev[optimisticId]
           delete next[optimisticId]
           return next
         })
@@ -225,15 +244,15 @@ export function useLiveController({
       void translatePromise
         .then((result) => {
           const rows = Object.entries(result.translations).map(([lang, translatedText]) => ({
-            segment_id: data.id,
+            segment_id: saved.segmentId,
             target_lang: lang,
             text: translatedText,
           }))
 
-          setTranslationsBySegmentId((prev) => ({ ...prev, [data.id]: rows }))
+          setTranslationsBySegmentId((prev) => ({ ...prev, [saved.segmentId]: rows }))
           setTranslatingIds((prev) => {
             const next = { ...prev }
-            delete next[data.id]
+            delete next[saved.segmentId]
             return next
           })
 
@@ -253,18 +272,33 @@ export function useLiveController({
               }
             }
 
-            await persistTranslation(data.id, result.detected, result.translations)
+            await persistTranslation(saved.segmentId, result.detected, result.translations)
           })
         })
         .catch((err) => {
           setTranslatingIds((prev) => {
             const next = { ...prev }
-            delete next[data.id]
+            delete next[saved.segmentId]
             return next
           })
           setError(err instanceof Error ? err.message : 'Translation failed')
         })
     } catch (err) {
+      if (optimisticId) {
+        setSegments((prev) => prev.filter((s) => s.id !== optimisticId))
+        setTranslationsBySegmentId((prev) => {
+          if (!prev[optimisticId!]) return prev
+          const next = { ...prev }
+          delete next[optimisticId!]
+          return next
+        })
+        setTranslatingIds((prev) => {
+          if (!prev[optimisticId!]) return prev
+          const next = { ...prev }
+          delete next[optimisticId!]
+          return next
+        })
+      }
       setError(err instanceof Error ? err.message : 'Live capture failed')
     }
   }

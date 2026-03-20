@@ -33,10 +33,46 @@ export function useSpeechCaptions({
   const interimTextRef = useRef<string>('')
   const pendingFinalsRef = useRef<Promise<void>[]>([])
 
+  const chunkTimerRef = useRef<number | null>(null)
+  const lastChunkAtRef = useRef<number>(0)
+
   const flushTimerRef = useRef<number | null>(null)
   const lastInterimAtRef = useRef<number>(0)
   const lastDeliveredAtRef = useRef<number>(0)
   const lastDeliveredTextRef = useRef<string>('')
+  const committedAggregateRef = useRef<string>('')
+
+  const normalizeForDiff = (s: string) => s.replace(/\s+/g, ' ').trim()
+
+  const computeDelta = (aggregate: string) => {
+    const current = normalizeForDiff(aggregate)
+    const committed = normalizeForDiff(committedAggregateRef.current)
+    if (!committed) return current
+    if (current === committed) return ''
+    if (current.startsWith(committed)) return current.slice(committed.length).trim()
+
+    const committedLower = committed.toLowerCase()
+    const currentLower = current.toLowerCase()
+    if (currentLower.startsWith(committedLower)) return current.slice(committed.length).trim()
+
+    const idx = currentLower.indexOf(committedLower)
+    if (idx >= 0) {
+      const tail = current.slice(idx + committed.length)
+      return tail.trim()
+    }
+
+    return current
+  }
+
+  const splitPhrases = (s: string) => {
+    const cleaned = s.trim()
+    if (!cleaned) return []
+    const parts = cleaned
+      .split(/\n+|(?<=[.!?])\s+(?=[A-Za-z0-9\u0900-\u097F])/)
+      .map((p) => p.replace(/\s+/g, ' ').trim())
+      .filter(Boolean)
+    return parts.length ? parts.slice(0, 12) : []
+  }
 
   const startTimeRef = useRef<number | null>(null)
   const currentStartMsRef = useRef<number | null>(null)
@@ -47,6 +83,7 @@ export function useSpeechCaptions({
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
       if (restartTimerRef.current) window.clearTimeout(restartTimerRef.current)
+      if (chunkTimerRef.current) window.clearInterval(chunkTimerRef.current)
       micStreamRef.current?.getTracks().forEach((t) => t.stop())
       recognitionRef.current?.abort()
       audioContextRef.current?.close()
@@ -109,8 +146,25 @@ export function useSpeechCaptions({
     currentStartMsRef.current = null
     interimTextRef.current = ''
     setInterim('')
+
+    const delta = computeDelta(cleaned)
+    committedAggregateRef.current = cleaned
+    const phrases = splitPhrases(delta)
+    if (!phrases.length) return
+
     try {
-      await onFinal({ text: cleaned, startMs, endMs: safeEndMs })
+      if (phrases.length === 1) {
+        await onFinal({ text: phrases[0], startMs, endMs: safeEndMs })
+        return
+      }
+
+      const span = Math.max(200, safeEndMs - startMs)
+      const step = Math.max(200, Math.round(span / phrases.length))
+      for (let i = 0; i < phrases.length; i++) {
+        const s = startMs + i * step
+        const e = i === phrases.length - 1 ? safeEndMs : Math.max(s + 200, startMs + (i + 1) * step)
+        await onFinal({ text: phrases[i], startMs: s, endMs: e })
+      }
     } catch {
       // ignore
     }
@@ -120,6 +174,38 @@ export function useSpeechCaptions({
     if (!flushTimerRef.current) return
     window.clearTimeout(flushTimerRef.current)
     flushTimerRef.current = null
+  }
+
+  const clearChunkTimer = () => {
+    if (!chunkTimerRef.current) return
+    window.clearInterval(chunkTimerRef.current)
+    chunkTimerRef.current = null
+  }
+
+  const armChunkTimer = () => {
+    clearChunkTimer()
+    lastChunkAtRef.current = Date.now()
+
+    // Some browsers only finalize once at the end of long speech.
+    // Periodically stopping recognition forces it to emit a final result so we can persist earlier lines.
+    chunkTimerRef.current = window.setInterval(() => {
+      if (!enabled) return
+      if (!shouldListenRef.current) return
+
+      const now = Date.now()
+      if (now - lastChunkAtRef.current < 5500) return
+      lastChunkAtRef.current = now
+
+      const snapshot = interimTextRef.current.trim()
+      if (!snapshot) return
+      if (snapshot.length < 25) return
+
+      try {
+        recognitionRef.current?.stop()
+      } catch {
+        // ignore
+      }
+    }, 3000)
   }
 
   const scheduleFlushOnSilence = () => {
@@ -216,6 +302,18 @@ export function useSpeechCaptions({
       recognition.onresult = (event) => {
         const elapsedMs = elapsedNowMs()
 
+        const aggregate = Array.from(event.results)
+          .map((r) => (r[0]?.transcript ?? '').trim())
+          .filter(Boolean)
+          .join(' ')
+          .trim()
+        if (aggregate) {
+          interimTextRef.current = aggregate
+          setInterim(aggregate)
+          lastInterimAtRef.current = Date.now()
+          scheduleFlushOnSilence()
+        }
+
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const res = event.results[i]
           const text = res[0]?.transcript?.trim() ?? ''
@@ -223,10 +321,6 @@ export function useSpeechCaptions({
 
           if (!res.isFinal) {
             if (currentStartMsRef.current == null) currentStartMsRef.current = elapsedMs
-            interimTextRef.current = text
-            setInterim(text)
-            lastInterimAtRef.current = Date.now()
-            scheduleFlushOnSilence()
             continue
           }
           clearFlushTimer()
@@ -242,6 +336,7 @@ export function useSpeechCaptions({
         recognition.start()
         setStatus('listening')
         setError(null)
+        armChunkTimer()
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Failed to start SpeechRecognition'
         setError(msg)
@@ -267,6 +362,7 @@ export function useSpeechCaptions({
     lastDeliveredTextRef.current = ''
     lastInterimAtRef.current = 0
     clearFlushTimer()
+    clearChunkTimer()
 
     shouldListenRef.current = true
     restartAttemptRef.current = 0
@@ -331,6 +427,18 @@ export function useSpeechCaptions({
     recognition.onresult = (event) => {
       const elapsedMs = elapsedNowMs()
 
+      const aggregate = Array.from(event.results)
+        .map((r) => (r[0]?.transcript ?? '').trim())
+        .filter(Boolean)
+        .join(' ')
+        .trim()
+      if (aggregate) {
+        interimTextRef.current = aggregate
+        setInterim(aggregate)
+        lastInterimAtRef.current = Date.now()
+        scheduleFlushOnSilence()
+      }
+
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const res = event.results[i]
         const text = res[0]?.transcript?.trim() ?? ''
@@ -338,10 +446,6 @@ export function useSpeechCaptions({
 
         if (!res.isFinal) {
           if (currentStartMsRef.current == null) currentStartMsRef.current = elapsedMs
-          interimTextRef.current = text
-          setInterim(text)
-          lastInterimAtRef.current = Date.now()
-          scheduleFlushOnSilence()
           continue
         }
         clearFlushTimer()
@@ -355,6 +459,7 @@ export function useSpeechCaptions({
 
     recognition.start()
     setStatus('listening')
+    armChunkTimer()
   }
 
   const restart = async (overrideLang?: string) => {
@@ -369,6 +474,7 @@ export function useSpeechCaptions({
     setError(null)
     interimTextRef.current = ''
     setInterim('')
+    clearChunkTimer()
 
     try {
       recognitionRef.current?.stop()
@@ -398,6 +504,7 @@ export function useSpeechCaptions({
     }
     shouldListenRef.current = false
     recognitionRef.current?.stop()
+    clearChunkTimer()
     stopMicMeter()
     setStatus('paused')
   }
@@ -424,6 +531,7 @@ export function useSpeechCaptions({
       restartTimerRef.current = null
     }
     clearFlushTimer()
+    clearChunkTimer()
     recognitionRef.current?.stop()
     recognitionRef.current = null
     stopMicMeter()
