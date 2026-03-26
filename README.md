@@ -42,18 +42,19 @@
 
 ```bash
 # 1. Clone
-git clone <repo-url>
-cd bhashasakha
+git clone https://github.com/WebApps4u/BhashaSakha.git
+cd BhashaSakha
 
 # 2. Create virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
 
 # 3. Install dependencies
+pip install torch --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements.txt
 
 # 4. Download models (first run only)
-python scripts/download_models.py
+bash scripts/download_models.sh
 
 # 5. Run
 python ui/server.py
@@ -66,31 +67,46 @@ Open **http://localhost:8080** in your browser.
 ```
 bhashasakha/
 ├── config/
-│   └── banking_glossary.yaml      # Banking term corrections
-├── models/
-│   ├── stt/
-│   │   └── whisper-small-int8/    # Whisper STT model
-│   ├── translation/
-│   │   └── nllb-200-...-ct2-int8/ # NLLB translation model
-│   └── piper/
-│       ├── hi_IN-rohan-medium.*   # Hindi TTS voice
-│       └── en_US-amy-medium.*     # English TTS voice
-├── src/
-│   └── translation/
-│       ├── nllb_engine.py         # NLLB translation engine
-│       ├── glossary.py            # Banking glossary
-│       └── cache.py               # Translation cache
-├── ui/
-│   ├── server.py                  # FastAPI server (main)
-│   └── static/
-│       ├── index.html             # App HTML
-│       ├── style.css              # Premium CSS
-│       └── app.js                 # Client JS
+│   ├── banking_glossary.yaml      # Banking term corrections
+│   └── config.yaml                # App configuration
+├── deployment/
+│   ├── bhashasakha.service        # systemd service file
+│   ├── install.sh                 # Automated installer
+│   ├── logrotate.conf             # Log rotation config
+│   └── update.sh                  # Update script
 ├── docs/
 │   ├── ARCHITECTURE.md            # System architecture
 │   └── SETUP.md                   # Detailed setup guide
+├── models/                        # Downloaded separately (gitignored)
+│   ├── stt/whisper-small-int8/    # Whisper STT model
+│   ├── translation/nllb-...-int8/ # NLLB translation model
+│   ├── piper/                     # Piper TTS voices (hi/en)
+│   └── vad/silero_vad.onnx        # Voice activity detection
+├── scripts/
+│   ├── download_models.sh         # Model download script
+│   ├── benchmark.py               # Performance benchmarks
+│   ├── integration_test.py        # Integration tests
+│   └── monitor.py                 # System monitor
+├── src/
+│   ├── audio/                     # Audio capture & processing
+│   ├── core/                      # Pipeline, session, state machine
+│   ├── stt/                       # Whisper STT engine
+│   ├── translation/               # NLLB engine, glossary, cache
+│   ├── tts/                       # Piper TTS engine
+│   ├── display/                   # Text display utilities
+│   ├── sensors/                   # Proximity sensor support
+│   └── utils/                     # Health, logging, profiler
+├── tests/                         # Unit & integration tests
+├── ui/
+│   ├── server.py                  # FastAPI server (main entry)
+│   └── static/
+│       ├── index.html             # App HTML
+│       ├── style.css              # Premium dark CSS
+│       └── app.js                 # Client JavaScript
 ├── requirements.txt               # Python dependencies
+├── setup.py                       # Package setup
 ├── .gitignore                     # Git ignore rules
+├── LICENSE                        # MIT License
 └── README.md                      # This file
 ```
 

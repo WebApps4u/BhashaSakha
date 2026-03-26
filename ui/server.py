@@ -1,7 +1,8 @@
-"""BhashaSakha v4 — Accurate Offline Translation.
+"""BhashaSakha v6 — Offline Voice Translation Kiosk.
 
-whisper-small (forced language) → NLLB → Piper/espeak TTS.
-3 languages: English, Hindi, Marathi. Push-to-talk.
+Pipeline: Whisper-small (forced language) → NLLB-200 → Piper/MMS-TTS.
+Languages: English, Hindi, Marathi. Push-to-talk.
+TTS: Piper VITS (hi/en), MMS-TTS VITS (mr), espeak-ng (fallback).
 """
 
 import os, sys, io, time, json, base64, logging, subprocess, asyncio
