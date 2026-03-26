@@ -1,0 +1,217 @@
+# Banking Domain Glossary for BhashaSakha
+# Used for post-STT correction and post-translation correction
+# Each term has canonical forms in all 3 supported languages
+# stt_aliases lists common misrecognitions by Whisper
+
+terms:
+  - id: kyc
+    en: ["KYC", "Know Your Customer"]
+    hi: ["केवाईसी", "ग्राहक पहचान"]
+    mr: ["केवायसी", "ग्राहक ओळख"]
+    stt_aliases:
+      en: ["case Y C", "K Y C", "casey", "K.Y.C."]
+      hi: ["के वाई सी", "केवाइसी", "के. वाई. सी."]
+      mr: ["के वाय सी"]
+
+  - id: emi
+    en: ["EMI", "Equated Monthly Installment"]
+    hi: ["ईएमआई", "समान मासिक किस्त"]
+    mr: ["ईएमआय", "समान मासिक हप्ता"]
+    stt_aliases:
+      en: ["E M I", "amy", "Emmy", "E.M.I."]
+      hi: ["ई एम आई", "इ एम आई"]
+      mr: ["ई एम आय"]
+
+  - id: ifsc
+    en: ["IFSC code", "IFSC"]
+    hi: ["आईएफएससी कोड", "आईएफएससी"]
+    mr: ["आयएफएससी कोड", "आयएफएससी"]
+    stt_aliases:
+      en: ["I F S C", "I.F.S.C.", "if SC"]
+      hi: ["आई एफ एस सी"]
+
+  - id: account_number
+    en: ["account number", "account no"]
+    hi: ["खाता नंबर", "खाता संख्या"]
+    mr: ["खाते क्रमांक", "खाता नंबर"]
+    stt_aliases:
+      en: ["account no.", "a/c number"]
+
+  - id: fixed_deposit
+    en: ["fixed deposit", "FD"]
+    hi: ["सावधि जमा", "एफडी", "फिक्स्ड डिपॉजिट"]
+    mr: ["मुदत ठेव", "एफडी", "फिक्स्ड डिपॉझिट"]
+    stt_aliases:
+      en: ["F D", "F.D.", "fixed deposite"]
+      hi: ["फिक्स डिपॉजिट"]
+
+  - id: recurring_deposit
+    en: ["recurring deposit", "RD"]
+    hi: ["आवर्ती जमा", "आरडी"]
+    mr: ["आवर्ती ठेव", "आरडी"]
+
+  - id: savings_account
+    en: ["savings account"]
+    hi: ["बचत खाता"]
+    mr: ["बचत खाते"]
+
+  - id: current_account
+    en: ["current account"]
+    hi: ["चालू खाता"]
+    mr: ["चालू खाते"]
+
+  - id: loan_application
+    en: ["loan application", "loan request"]
+    hi: ["ऋण आवेदन", "लोन आवेदन"]
+    mr: ["कर्ज अर्ज", "लोन अर्ज"]
+
+  - id: interest_rate
+    en: ["interest rate"]
+    hi: ["ब्याज दर"]
+    mr: ["व्याज दर"]
+
+  - id: passbook
+    en: ["passbook"]
+    hi: ["पासबुक"]
+    mr: ["पासबुक"]
+
+  - id: withdrawal
+    en: ["withdrawal", "withdraw"]
+    hi: ["निकासी", "पैसे निकालना"]
+    mr: ["पैसे काढणे", "रक्कम काढणे"]
+
+  - id: deposit
+    en: ["deposit"]
+    hi: ["जमा", "पैसे जमा करना"]
+    mr: ["ठेव", "रक्कम भरणे"]
+
+  - id: balance_inquiry
+    en: ["balance inquiry", "balance check", "account balance"]
+    hi: ["शेष राशि पूछताछ", "बैलेंस चेक", "खाता बैलेंस"]
+    mr: ["शिल्लक चौकशी", "बॅलन्स तपासणी"]
+
+  - id: cheque_book
+    en: ["cheque book", "check book"]
+    hi: ["चेक बुक"]
+    mr: ["धनादेश पुस्तिका", "चेक बुक"]
+
+  - id: atm
+    en: ["ATM", "ATM card"]
+    hi: ["एटीएम", "एटीएम कार्ड"]
+    mr: ["एटीएम", "एटीएम कार्ड"]
+    stt_aliases:
+      en: ["A T M", "A.T.M."]
+
+  - id: neft
+    en: ["NEFT", "NEFT transfer"]
+    hi: ["एनईएफटी", "नेफ्ट"]
+    mr: ["एनईएफटी", "नेफ्ट"]
+    stt_aliases:
+      en: ["N E F T", "neft"]
+
+  - id: rtgs
+    en: ["RTGS"]
+    hi: ["आरटीजीएस"]
+    mr: ["आरटीजीएस"]
+    stt_aliases:
+      en: ["R T G S", "R.T.G.S."]
+
+  - id: upi
+    en: ["UPI", "UPI payment"]
+    hi: ["यूपीआई"]
+    mr: ["यूपीआय"]
+    stt_aliases:
+      en: ["U P I", "U.P.I."]
+
+  - id: nominee
+    en: ["nominee", "nomination"]
+    hi: ["नामांकित व्यक्ति", "नॉमिनी"]
+    mr: ["नामनिर्देशित व्यक्ती", "नॉमिनी"]
+
+  - id: pan_card
+    en: ["PAN card", "PAN number"]
+    hi: ["पैन कार्ड", "पैन नंबर"]
+    mr: ["पॅन कार्ड", "पॅन नंबर"]
+    stt_aliases:
+      en: ["P A N", "pan", "P.A.N."]
+
+  - id: aadhaar
+    en: ["Aadhaar", "Aadhaar card", "Aadhaar number"]
+    hi: ["आधार", "आधार कार्ड", "आधार नंबर"]
+    mr: ["आधार", "आधार कार्ड", "आधार क्रमांक"]
+    stt_aliases:
+      en: ["Aadhar", "adhar", "aadar"]
+
+  - id: demand_draft
+    en: ["demand draft", "DD"]
+    hi: ["डिमांड ड्राफ्ट", "डीडी"]
+    mr: ["डिमांड ड्राफ्ट", "डीडी"]
+
+  - id: bank_statement
+    en: ["bank statement", "account statement"]
+    hi: ["बैंक स्टेटमेंट", "खाता विवरण"]
+    mr: ["बँक स्टेटमेंट", "खाते विवरण"]
+
+  - id: mobile_banking
+    en: ["mobile banking", "net banking", "internet banking"]
+    hi: ["मोबाइल बैंकिंग", "नेट बैंकिंग", "इंटरनेट बैंकिंग"]
+    mr: ["मोबाईल बँकिंग", "नेट बँकिंग", "इंटरनेट बँकिंग"]
+
+  - id: overdraft
+    en: ["overdraft", "OD"]
+    hi: ["ओवरड्राफ्ट", "ओडी"]
+    mr: ["ओव्हरड्राफ्ट", "ओडी"]
+
+  - id: collateral
+    en: ["collateral", "security"]
+    hi: ["संपार्श्विक", "जमानत"]
+    mr: ["तारण", "जामीन"]
+
+  - id: mortgage
+    en: ["mortgage", "home loan"]
+    hi: ["बंधक", "गृह ऋण", "होम लोन"]
+    mr: ["गहाण", "गृहकर्ज", "होम लोन"]
+
+  - id: debit_card
+    en: ["debit card"]
+    hi: ["डेबिट कार्ड"]
+    mr: ["डेबिट कार्ड"]
+
+  - id: credit_card
+    en: ["credit card"]
+    hi: ["क्रेडिट कार्ड"]
+    mr: ["क्रेडिट कार्ड"]
+
+  - id: branch
+    en: ["branch", "bank branch"]
+    hi: ["शाखा", "बैंक शाखा"]
+    mr: ["शाखा", "बँक शाखा"]
+
+  - id: maturity
+    en: ["maturity", "maturity date"]
+    hi: ["परिपक्वता", "परिपक्वता तिथि"]
+    mr: ["मुदतपूर्ती", "मुदतपूर्ती तारीख"]
+
+# Confusion/repeat trigger words
+confusion_triggers:
+  hi: ["समझ नहीं आया", "फिर से बोलो", "दोबारा", "क्या बोला", "फिर से"]
+  mr: ["समजलं नाही", "परत सांगा", "पुन्हा", "काय म्हणालात", "परत"]
+  en: ["repeat", "say again", "again", "sorry", "what", "didn't understand", "pardon", "come again"]
+
+# Slow-down trigger words
+slowdown_triggers:
+  hi: ["धीरे बोलो", "धीरे से", "आहिस्ता"]
+  mr: ["हळू बोला", "हळू सांगा"]
+  en: ["slow down", "slower", "too fast", "speak slowly"]
+
+# Language switch commands
+language_switch:
+  hi:
+    en: ["English में बोलो", "अंग्रेजी में"]
+    mr: ["मराठी में बोलो"]
+  mr:
+    en: ["इंग्रजी मध्ये बोला"]
+    hi: ["हिंदी मध्ये बोला"]
+  en:
+    hi: ["speak in Hindi", "switch to Hindi"]
+    mr: ["speak in Marathi", "switch to Marathi"]

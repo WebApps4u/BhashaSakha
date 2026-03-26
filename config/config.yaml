@@ -1,0 +1,99 @@
+# BhashaSakha System Configuration
+# Target: Raspberry Pi 5 (16GB RAM)
+
+system:
+  name: "BhashaSakha"
+  version: "1.0.0"
+  log_level: "INFO"
+  log_to_file: false
+  display_enabled: false
+
+audio:
+  input_device: null          # null = system default USB mic
+  output_device: null         # null = system default speaker
+  sample_rate: 16000
+  channels: 1
+  buffer_duration_sec: 30
+  frame_duration_ms: 30
+
+vad:
+  model_path: "models/vad/silero_vad.onnx"
+  threshold: 0.5
+  min_speech_ms: 500
+  max_speech_ms: 30000
+  silence_endpoint_ms: 600
+  pre_speech_pad_ms: 300
+  post_speech_pad_ms: 100
+
+stt:
+  model_path: "models/stt/whisper-small-int8"
+  compute_type: "int8"
+  beam_size: 3
+  best_of: 1
+  without_timestamps: true
+  condition_on_previous_text: false
+  language: null              # null = auto-detect
+  min_confidence: 0.5
+
+translation:
+  model_path: "models/translation/nllb-200-distilled-600M-ct2-int8"
+  tokenizer_name: "facebook/nllb-200-distilled-600M"
+  beam_size: 2
+  max_decoding_length: 128
+  supported_languages:
+    - code: "hin_Deva"
+      whisper_code: "hi"
+      name: "Hindi"
+      piper_voice: "hi_IN-rohan-medium"
+    - code: "mar_Deva"
+      whisper_code: "mr"
+      name: "Marathi"
+      piper_voice: "mr_IN-medium"
+    - code: "eng_Latn"
+      whisper_code: "en"
+      name: "English"
+      piper_voice: "en_US-lessac-medium"
+
+tts:
+  voices:
+    hi:
+      model: "models/tts/hi_IN-rohan-medium.onnx"
+      config: "models/tts/hi_IN-rohan-medium.onnx.json"
+    mr:
+      model: "models/tts/mr_IN-medium.onnx"
+      config: "models/tts/mr_IN-medium.onnx.json"
+    en:
+      model: "models/tts/en_US-lessac-medium.onnx"
+      config: "models/tts/en_US-lessac-medium.onnx.json"
+  default_speed: 1.0
+  slow_speed: 0.8
+
+proximity:
+  enabled: true
+  trigger_pin: 23
+  echo_pin: 24
+  activation_cm: 100
+  deactivation_cm: 200
+  deactivation_delay_sec: 30
+  poll_interval_ms: 500
+
+session:
+  idle_timeout_sec: 120
+  max_duration_sec: 1800
+  confusion_threshold: 2
+
+glossary:
+  path: "config/banking_glossary.yaml"
+  fuzzy_match_threshold: 2
+  enabled: true
+
+health:
+  monitor_interval_sec: 30
+  max_cpu_temp_c: 80
+  max_memory_percent: 85
+  auto_restart_on_oom: true
+
+performance:
+  omp_num_threads: 2
+  preload_all_models: true
+  warmup_on_boot: true

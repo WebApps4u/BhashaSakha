@@ -1,0 +1,450 @@
+/* BhashaSakha v6 — Polished Chat + Original Voice */
+
+let ws, mediaStream, mediaRecorder, audioChunks = [];
+let isRecording = false, isMuted = false;
+let conversations = [], currentConvId = null;
+
+// Audio store: play by key, not inline strings
+const audioStore = {};
+let audioCounter = 0;
+
+const L = {en: 0, hi: 1, mr: 2};
+const LN = {en: 'English', hi: 'हिन्दी', mr: 'मराठी'};
+const LANG_EMOJI = {en: '🇬🇧', hi: '🇮🇳', mr: '🇮🇳'};
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadConvs(); connect(); renderSB();
+    setTimeout(() => splashUp('Connecting...', 15), 200);
+});
+
+// ═══ WEBSOCKET ════════════════════════════════════════
+function connect() {
+    const p = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(`${p}//${location.host}/ws`);
+    ws.binaryType = 'arraybuffer';
+    ws.onopen = () => splashUp('Loading AI models...', 35);
+    ws.onmessage = e => handle(JSON.parse(e.data));
+    ws.onclose = () => setTimeout(connect, 2000);
+}
+
+function handle(d) {
+    if (d.type === 'loading') splashUp('Loading AI models...', 50);
+    if (d.type === 'ready') {
+        splashUp('Ready!', 100);
+        setTimeout(() => {
+            _('splash').classList.remove('show');
+            _('app').classList.remove('hide');
+            initMic();
+        }, 500);
+    }
+    if (d.type === 'processing') showProcessing();
+    if (d.type === 'result') showResult(d);
+    if (d.type === 'silence') { clearProcessing(); setStatus('', 'No speech detected'); }
+    if (d.type === 'error') { clearProcessing(); setStatus('', 'Error — try again'); }
+}
+
+function splashUp(t, p) {
+    const f = _('splash-fill'), s = _('splash-status');
+    if (f) f.style.width = p + '%';
+    if (s) s.textContent = t;
+}
+
+// ═══ MIC ══════════════════════════════════════════════
+async function initMic() {
+    try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+            audio: { channelCount: 1, sampleRate: 16000, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+        });
+        setStatus('', 'Ready');
+    } catch { setStatus('', 'Mic access denied'); }
+}
+
+function startRec() {
+    if (isRecording || !mediaStream) return;
+    if (event) event.preventDefault();
+    isRecording = true;
+    audioChunks = [];
+    mediaRecorder = new MediaRecorder(mediaStream, { mimeType: bestMime() });
+    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+    mediaRecorder.start(50);
+    _('mic').classList.add('rec');
+    setStatus('rec', 'Recording — release to translate');
+}
+
+function stopRec() {
+    if (!isRecording) return;
+    if (event) event.preventDefault();
+    isRecording = false;
+    _('mic').classList.remove('rec');
+    setStatus('proc', 'Translating...');
+
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.onstop = async () => {
+            const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
+            audioChunks = [];
+
+            // Store original voice for playback
+            const origKey = 'orig_' + (++audioCounter);
+            audioStore[origKey] = URL.createObjectURL(blob);
+
+            // Send as WAV
+            const wavBlob = await toWav(blob);
+            const wavBuf = await wavBlob.arrayBuffer();
+            const src = _('sel-src').value, tgt = _('sel-tgt').value;
+            const hdr = new Uint8Array([L[src] || 0, L[tgt] || 0]);
+            const combined = new Uint8Array(hdr.length + wavBuf.byteLength);
+            combined.set(hdr);
+            combined.set(new Uint8Array(wavBuf), 2);
+
+            // Attach origKey to pending result
+            window._pendingOrigKey = origKey;
+
+            if (ws && ws.readyState === 1) ws.send(combined.buffer);
+        };
+        mediaRecorder.stop();
+    }
+}
+
+// ═══ DISPLAY: Processing ═════════════════════════════
+function showProcessing() {
+    clearProcessing();
+    hideWelcome();
+    const s = _('sel-src').value, t = _('sel-tgt').value;
+    const el = document.createElement('div');
+    el.className = 'proc-card';
+    el.id = 'proc-card';
+    el.innerHTML = `
+        <div class="proc-inner">
+            <div class="proc-dots"><i></i><i></i><i></i></div>
+            <p class="proc-text">${LN[s]} → ${LN[t]}</p>
+            <p class="proc-sub">Recognizing speech and translating...</p>
+        </div>`;
+    _('chat').appendChild(el);
+    _('chat').scrollTop = _('chat').scrollHeight;
+}
+
+function clearProcessing() {
+    const p = _('proc-card');
+    if (p) p.remove();
+}
+
+function hideWelcome() {
+    const w = _('welcome');
+    if (w) w.style.display = 'none';
+}
+
+// ═══ DISPLAY: Result (Unified Card) ══════════════════
+function showResult(d) {
+    clearProcessing();
+    hideWelcome();
+    ensureConv();
+
+    const chat = _('chat');
+    const isLat = d.tgt_lang === 'en';
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const secs = (d.total_ms / 1000).toFixed(1);
+
+    // Store TTS audio
+    let ttsKey = null;
+    if (d.tts) {
+        ttsKey = 'tts_' + (++audioCounter);
+        const raw = atob(d.tts);
+        const buf = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) buf[i] = raw.charCodeAt(i);
+        audioStore[ttsKey] = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+    }
+
+    // Get original voice key
+    const origKey = window._pendingOrigKey || null;
+    window._pendingOrigKey = null;
+
+    const el = document.createElement('div');
+    el.className = 'tcard';
+
+    el.innerHTML = `
+        <div class="tc-top">
+            <span class="tc-lang-pair">
+                <span class="tc-lang src">${LN[d.src_lang]}</span>
+                <svg class="tc-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                <span class="tc-lang tgt">${LN[d.tgt_lang]}</span>
+            </span>
+            <span class="tc-time">${timeStr}</span>
+        </div>
+
+        <div class="tc-body">
+            <div class="tc-section tc-original">
+                <div class="tc-sec-head">
+                    <span class="tc-sec-label">Original</span>
+                    ${origKey ? `<button class="tc-play" onclick="playAudio('${origKey}',this,'Original')">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                        <span>Play</span>
+                    </button>` : ''}
+                </div>
+                <p class="tc-text-src">${esc(d.src_text)}</p>
+            </div>
+
+            <div class="tc-divider"></div>
+
+            <div class="tc-section tc-translated">
+                <div class="tc-sec-head">
+                    <span class="tc-sec-label">Translation</span>
+                    ${ttsKey ? `<button class="tc-play accent" onclick="playAudio('${ttsKey}',this,'Translation')">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                        <span>Play</span>
+                    </button>` : ''}
+                </div>
+                <p class="tc-text-tgt ${isLat ? 'latin' : ''}">${esc(d.tgt_text)}</p>
+            </div>
+        </div>
+
+        <div class="tc-footer">
+            <span class="tc-metric">⚡ ${secs}s</span>
+            <button class="tc-copy" onclick="copyText(this,'${esc(d.tgt_text).replace(/'/g, "\\'")}')">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                Copy
+            </button>
+        </div>`;
+
+    chat.appendChild(el);
+    requestAnimationFrame(() => chat.scrollTop = chat.scrollHeight);
+    setStatus('', 'Done — ' + secs + 's');
+
+    saveMsg(d);
+    if (!isMuted && ttsKey) playAudio(ttsKey, null, 'Translation');
+}
+
+// ═══ AUDIO PLAYBACK ══════════════════════════════════
+function playAudio(key, btn, label) {
+    const url = audioStore[key];
+    if (!url) return;
+    const a = new Audio(url);
+    if (btn) {
+        btn.classList.add('playing');
+        btn.querySelector('span').textContent = 'Playing...';
+    }
+    a.onended = () => {
+        if (btn) {
+            btn.classList.remove('playing');
+            btn.querySelector('span').textContent = 'Play';
+        }
+    };
+    a.play().catch(() => {
+        if (btn) {
+            btn.classList.remove('playing');
+            btn.querySelector('span').textContent = 'Play';
+        }
+    });
+}
+
+function copyText(btn, text) {
+    navigator.clipboard.writeText(text).then(() => {
+        const orig = btn.innerHTML;
+        btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Copied!';
+        setTimeout(() => btn.innerHTML = orig, 1500);
+    });
+}
+
+// ═══ CONVERSATIONS ════════════════════════════════════
+function loadConvs() {
+    try {
+        conversations = JSON.parse(localStorage.getItem('bs_c') || '[]');
+        currentConvId = localStorage.getItem('bs_cur') || null;
+    } catch { conversations = []; }
+}
+
+function saveConvs() {
+    localStorage.setItem('bs_c', JSON.stringify(conversations));
+    localStorage.setItem('bs_cur', currentConvId || '');
+}
+
+function ensureConv() {
+    if (!currentConvId) {
+        const id = 'c' + Date.now();
+        conversations.unshift({ id, title: 'New conversation', time: new Date().toISOString(), msgs: [] });
+        currentConvId = id;
+        saveConvs();
+        renderSB();
+    }
+}
+
+function saveMsg(d) {
+    const c = conversations.find(x => x.id === currentConvId);
+    if (!c) return;
+    c.msgs.push({ st: d.src_text, sl: d.src_lang, tt: d.tgt_text, tl: d.tgt_lang, tm: d.total_ms, t: new Date().toISOString() });
+    if (c.msgs.length === 1) c.title = d.src_text.substring(0, 35) + (d.src_text.length > 35 ? '…' : '');
+    saveConvs();
+    renderSB();
+}
+
+function newConversation() {
+    currentConvId = null;
+    _('chat').innerHTML = welcomeHTML();
+    renderSB();
+    toggleSidebar();
+}
+
+function openConv(id) {
+    currentConvId = id;
+    saveConvs();
+    const c = conversations.find(x => x.id === id);
+    if (!c) return;
+    const chat = _('chat');
+    chat.innerHTML = '';
+    c.msgs.forEach((m, i) => {
+        const isLat = m.tl === 'en';
+        const t = new Date(m.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const secs = (m.tm / 1000).toFixed(1);
+        const el = document.createElement('div');
+        el.className = 'tcard';
+        el.style.cssText = 'animation:none;opacity:1;transform:none';
+        el.innerHTML = `
+            <div class="tc-top">
+                <span class="tc-lang-pair">
+                    <span class="tc-lang src">${LN[m.sl]}</span>
+                    <svg class="tc-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                    <span class="tc-lang tgt">${LN[m.tl]}</span>
+                </span>
+                <span class="tc-time">${t}</span>
+            </div>
+            <div class="tc-body">
+                <div class="tc-section tc-original">
+                    <div class="tc-sec-head"><span class="tc-sec-label">Original</span></div>
+                    <p class="tc-text-src">${esc(m.st)}</p>
+                </div>
+                <div class="tc-divider"></div>
+                <div class="tc-section tc-translated">
+                    <div class="tc-sec-head"><span class="tc-sec-label">Translation</span></div>
+                    <p class="tc-text-tgt ${isLat ? 'latin' : ''}">${esc(m.tt)}</p>
+                </div>
+            </div>
+            <div class="tc-footer"><span class="tc-metric">⚡ ${secs}s</span></div>`;
+        chat.appendChild(el);
+    });
+    chat.scrollTop = chat.scrollHeight;
+    renderSB();
+    toggleSidebar();
+}
+
+function deleteConv(id, e) {
+    e.stopPropagation();
+    conversations = conversations.filter(c => c.id !== id);
+    if (currentConvId === id) { currentConvId = null; _('chat').innerHTML = welcomeHTML(); }
+    saveConvs();
+    renderSB();
+}
+
+function renderSB() {
+    const ls = _('sb-list');
+    if (!conversations.length) { ls.innerHTML = '<p class="sb-empty">No conversations yet</p>'; return; }
+    ls.innerHTML = conversations.slice(0, 30).map(c => {
+        const a = c.id === currentConvId ? ' active' : '';
+        const d = new Date(c.time).toLocaleDateString([], { month: 'short', day: 'numeric' });
+        const cnt = c.msgs ? c.msgs.length : 0;
+        return `<div class="sb-item${a}" onclick="openConv('${c.id}')">
+            <div class="sb-item-info">
+                <span class="sb-item-t">${esc(c.title)}</span>
+                <span class="sb-item-meta">${cnt} msg · ${d}</span>
+            </div>
+            <button class="sb-item-del" onclick="deleteConv('${c.id}',event)" title="Delete">✕</button>
+        </div>`;
+    }).join('');
+}
+
+function welcomeHTML() {
+    return `<div class="welcome" id="welcome">
+        <div class="w-glyph"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg></div>
+        <h2>Hold the mic & speak</h2>
+        <p>Choose languages above, then hold the microphone to record your voice</p>
+        <p class="w-deva">ऊपर भाषा चुनें, माइक दबाकर बोलें</p>
+    </div>`;
+}
+
+// ═══ SIDEBAR / SETTINGS ══════════════════════════════
+function toggleSidebar() {
+    _('sidebar').classList.toggle('open');
+    _('sb-shade').classList.toggle('open');
+}
+
+function toggleSettings() {
+    const o = _('settings').classList.toggle('open');
+    _('set-shade').classList.toggle('open');
+    if (o) fetchSys();
+}
+
+async function fetchSys() {
+    try {
+        const r = await fetch('/api/system');
+        const d = await r.json();
+        _('s-cpu').textContent = d.cpu_pct + '%';
+        _('s-ram').textContent = d.ram_total_mb + 'MB';
+        _('s-used').textContent = d.ram_used_mb + 'MB';
+        _('ram-bar').style.width = d.ram_pct + '%';
+        _('model-list').innerHTML = Object.entries(d.models).map(([k, v]) =>
+            `<div class="set-model"><span class="mn">${k.replace(/_/g, ' ')}</span><span class="mv">${v}</span></div>`
+        ).join('');
+    } catch {}
+}
+
+// ═══ LANGUAGE ═════════════════════════════════════════
+function onLangChange() {
+    if (_('sel-src').value === _('sel-tgt').value) {
+        const o = ['en', 'hi', 'mr'].filter(l => l !== _('sel-src').value);
+        _('sel-tgt').value = o[0];
+    }
+}
+
+function swapLangs() {
+    const s = _('sel-src'), t = _('sel-tgt');
+    const sv = s.value;
+    s.value = t.value;
+    t.value = sv;
+}
+
+// ═══ WAV ENCODING ════════════════════════════════════
+async function toWav(blob) {
+    try {
+        const buf = await blob.arrayBuffer();
+        const ctx = new OfflineAudioContext(1, 1, 16000);
+        const dec = await ctx.decodeAudioData(buf);
+        return encWav(dec);
+    } catch { return blob; }
+}
+
+function encWav(ab) {
+    const ch = ab.getChannelData(0), sr = ab.sampleRate;
+    const s = new Int16Array(ch.length);
+    for (let i = 0; i < ch.length; i++) {
+        const v = Math.max(-1, Math.min(1, ch[i]));
+        s[i] = v < 0 ? v * 0x8000 : v * 0x7FFF;
+    }
+    const ds = s.length * 2, wav = new ArrayBuffer(44 + ds), d = new DataView(wav);
+    const w = (o, t) => { for (let i = 0; i < t.length; i++) d.setUint8(o + i, t.charCodeAt(i)); };
+    w(0, 'RIFF'); d.setUint32(4, wav.byteLength - 8, true); w(8, 'WAVE');
+    w(12, 'fmt '); d.setUint32(16, 16, true); d.setUint16(20, 1, true);
+    d.setUint16(22, 1, true); d.setUint32(24, sr, true); d.setUint32(28, sr * 2, true);
+    d.setUint16(32, 2, true); d.setUint16(34, 16, true); w(36, 'data'); d.setUint32(40, ds, true);
+    new Int16Array(wav, 44).set(s);
+    return new Blob([wav], { type: 'audio/wav' });
+}
+
+function bestMime() {
+    for (const t of ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg'])
+        if (MediaRecorder.isTypeSupported(t)) return t;
+    return 'audio/webm';
+}
+
+// ═══ UI HELPERS ══════════════════════════════════════
+function setStatus(state, text) {
+    _('ib-dot').className = 'ib-dot' + (state ? ' ' + state : '');
+    _('ib-text').textContent = text;
+}
+
+function toggleMute() {
+    isMuted = !isMuted;
+    _('mute-btn').classList.toggle('muted', isMuted);
+    _('mute-btn').textContent = isMuted ? '🔇' : '🔊';
+}
+
+function esc(t) { const e = document.createElement('span'); e.textContent = t; return e.innerHTML; }
+function _(id) { return document.getElementById(id); }

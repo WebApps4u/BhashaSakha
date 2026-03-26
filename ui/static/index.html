@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>BhashaSakha — Voice Translator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+    <!-- Splash -->
+    <div id="splash" class="splash show">
+        <div class="splash-inner">
+            <div class="splash-glow"></div>
+            <div class="splash-logo">भा</div>
+            <h1 class="splash-title">BhashaSakha</h1>
+            <p class="splash-sub">Offline Voice Translation</p>
+            <div class="splash-bar"><div class="splash-fill" id="splash-fill"></div></div>
+            <p class="splash-status" id="splash-status">Initializing...</p>
+        </div>
+    </div>
+
+    <!-- App -->
+    <div id="app" class="app hide">
+
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sb-top">
+                <div class="sb-brand">
+                    <div class="sb-logo">भा</div>
+                    <span>BhashaSakha</span>
+                </div>
+                <button class="sb-x" onclick="toggleSidebar()">✕</button>
+            </div>
+            <button class="sb-new" onclick="newConversation()"><span>＋</span> New Conversation</button>
+            <p class="sb-label">Recent</p>
+            <div class="sb-list" id="sb-list"><p class="sb-empty">No conversations yet</p></div>
+            <div class="sb-bottom">
+                <button class="sb-link" onclick="toggleSettings()"><span>⚙</span> Settings</button>
+            </div>
+        </aside>
+        <div class="sb-shade" id="sb-shade" onclick="toggleSidebar()"></div>
+
+        <!-- Main -->
+        <div class="main">
+            <header class="topbar">
+                <button class="tb-ico" onclick="toggleSidebar()">☰</button>
+                <div class="tb-lang">
+                    <select id="sel-src" class="tb-sel" onchange="onLangChange()">
+                        <option value="en">English</option>
+                        <option value="hi">हिन्दी</option>
+                        <option value="mr">मराठी</option>
+                    </select>
+                    <button class="tb-swap" onclick="swapLangs()">⇄</button>
+                    <select id="sel-tgt" class="tb-sel" onchange="onLangChange()">
+                        <option value="en">English</option>
+                        <option value="hi" selected>हिन्दी</option>
+                        <option value="mr">मराठी</option>
+                    </select>
+                </div>
+                <button class="tb-ico" id="mute-btn" onclick="toggleMute()">🔊</button>
+            </header>
+
+            <main class="chat" id="chat">
+                <div class="welcome" id="welcome">
+                    <div class="w-glyph">
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
+                    </div>
+                    <h2>Hold the mic & speak</h2>
+                    <p>Choose languages above, then hold the mic to record your voice. Release to translate.</p>
+                    <p class="w-deva">ऊपर भाषा चुनें, माइक दबाकर बोलें</p>
+                </div>
+            </main>
+
+            <footer class="inputbar">
+                <div class="ib-row">
+                    <div class="ib-info">
+                        <span class="ib-dot" id="ib-dot"></span>
+                        <span class="ib-text" id="ib-text">Ready</span>
+                    </div>
+                    <button class="mic" id="mic"
+                        onmousedown="startRec()" onmouseup="stopRec()"
+                        ontouchstart="startRec()" ontouchend="stopRec()"
+                        oncontextmenu="return false">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                            <line x1="12" y1="19" x2="12" y2="23"/>
+                        </svg>
+                        <div class="mic-ring"></div>
+                    </button>
+                </div>
+            </footer>
+        </div>
+
+        <!-- Settings -->
+        <div class="set-shade" id="set-shade" onclick="toggleSettings()"></div>
+        <div class="settings" id="settings">
+            <div class="set-top"><h3>Settings</h3><button class="sb-x" onclick="toggleSettings()">✕</button></div>
+            <div class="set-body">
+                <p class="sb-label">Performance</p>
+                <div class="set-stats" id="set-stats">
+                    <div class="stat"><span class="stat-v" id="s-cpu">—</span><span class="stat-l">CPU</span></div>
+                    <div class="stat"><span class="stat-v" id="s-ram">—</span><span class="stat-l">RAM</span></div>
+                    <div class="stat"><span class="stat-v" id="s-used">—</span><span class="stat-l">Used</span></div>
+                </div>
+                <div class="set-bar-row"><span class="set-bar-lbl">Memory</span><div class="set-bar"><div class="set-bar-f" id="ram-bar"></div></div></div>
+                <p class="sb-label" style="margin-top:20px">AI Models</p>
+                <div id="model-list"></div>
+                <p class="sb-label" style="margin-top:20px">About</p>
+                <p class="set-about">BhashaSakha — 100% Offline Voice Translator for banking. Powered by Whisper, NLLB-200, Piper & MMS-TTS VITS.</p>
+                <p class="set-ver">Version 5.0 • Designed for Raspberry Pi 5</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
