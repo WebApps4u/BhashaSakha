@@ -94,7 +94,7 @@ mkdir -p "$PIPER_DIR"
 
 PIPER_URL="https://huggingface.co/rhasspy/piper-voices/resolve/main"
 
-# Hindi voice: hi_IN-rohan-medium
+# Hindi voice: hi_IN-rohan-medium (Male)
 if [ ! -f "${PIPER_DIR}/hi_IN-rohan-medium.onnx" ]; then
     echo "  Downloading Hindi voice (hi_IN-rohan-medium)..."
     wget -q --show-progress \
@@ -103,9 +103,23 @@ if [ ! -f "${PIPER_DIR}/hi_IN-rohan-medium.onnx" ]; then
     wget -q --show-progress \
         "${PIPER_URL}/hi/hi_IN/rohan/medium/hi_IN-rohan-medium.onnx.json?download=true" \
         -O "${PIPER_DIR}/hi_IN-rohan-medium.onnx.json"
-    echo "  ✓ Hindi voice downloaded"
+    echo "  ✓ Hindi voice (Male) downloaded"
 else
-    echo "  ✓ Hindi voice already exists"
+    echo "  ✓ Hindi voice (Male) already exists"
+fi
+
+# Hindi voice: hi_IN-swara-medium (Female)
+if [ ! -f "${PIPER_DIR}/hi_IN-swara-medium.onnx" ]; then
+    echo "  Downloading Hindi voice (hi_IN-swara-medium)..."
+    wget -q --show-progress \
+        "${PIPER_URL}/hi/hi_IN/swara/medium/hi_IN-swara-medium.onnx?download=true" \
+        -O "${PIPER_DIR}/hi_IN-swara-medium.onnx"
+    wget -q --show-progress \
+        "${PIPER_URL}/hi/hi_IN/swara/medium/hi_IN-swara-medium.onnx.json?download=true" \
+        -O "${PIPER_DIR}/hi_IN-swara-medium.onnx.json"
+    echo "  ✓ Hindi voice (Female) downloaded"
+else
+    echo "  ✓ Hindi voice (Female) already exists"
 fi
 
 # English voice: en_US-amy-medium

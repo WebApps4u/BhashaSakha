@@ -1,19 +1,32 @@
-/* BhashaSakha v6 — Polished Chat + Original Voice */
+/* BhashaSakha v6.1 — Optimized for RPi5 Kiosk */
 
 let ws, mediaStream, mediaRecorder, audioChunks = [];
 let isRecording = false, isMuted = false;
 let conversations = [], currentConvId = null;
 
+// Recording limits
+const MAX_RECORD_MS = 15000; // 15 seconds max
+let recordTimer = null;
+let recordStart = 0;
+let countdownInterval = null;
+
 // Audio store: play by key, not inline strings
 const audioStore = {};
 let audioCounter = 0;
+
+let config = { camera: false, gender: false, age: false, mood: false };
+let faceApiLoaded = false, cameraActive = false;
+let currentMood = 'neutral', currentGender = '', currentAge = 0;
 
 const L = {en: 0, hi: 1, mr: 2};
 const LN = {en: 'English', hi: 'हिन्दी', mr: 'मराठी'};
 const LANG_EMOJI = {en: '🇬🇧', hi: '🇮🇳', mr: '🇮🇳'};
 
 document.addEventListener('DOMContentLoaded', () => {
-    loadConvs(); connect(); renderSB();
+    loadConvs(); 
+    loadConfig();
+    connect(); 
+    renderSB();
     setTimeout(() => splashUp('Connecting...', 15), 200);
 });
 
@@ -38,6 +51,7 @@ function handle(d) {
         }, 500);
     }
     if (d.type === 'processing') showProcessing();
+    if (d.type === 'stage') updateStage(d);
     if (d.type === 'result') showResult(d);
     if (d.type === 'silence') { clearProcessing(); setStatus('', 'No speech detected'); }
     if (d.type === 'error') { clearProcessing(); setStatus('', 'Error — try again'); }
@@ -56,7 +70,10 @@ async function initMic() {
             audio: { channelCount: 1, sampleRate: 16000, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
         });
         setStatus('', 'Ready');
-    } catch { setStatus('', 'Mic access denied'); }
+    } catch (e) { 
+        console.error("Mic Error:", e);
+        setStatus('', 'Mic Error: ' + e.name); 
+    }
 }
 
 function startRec() {
@@ -64,11 +81,21 @@ function startRec() {
     if (event) event.preventDefault();
     isRecording = true;
     audioChunks = [];
+    recordStart = Date.now();
     mediaRecorder = new MediaRecorder(mediaStream, { mimeType: bestMime() });
     mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
     mediaRecorder.start(50);
     _('mic').classList.add('rec');
     setStatus('rec', 'Recording — release to translate');
+
+    // Show countdown timer
+    showRecTimer();
+    countdownInterval = setInterval(updateRecTimer, 100);
+
+    // Auto-stop after MAX_RECORD_MS to prevent freezing
+    recordTimer = setTimeout(() => {
+        if (isRecording) stopRec();
+    }, MAX_RECORD_MS);
 }
 
 function stopRec() {
@@ -76,7 +103,12 @@ function stopRec() {
     if (event) event.preventDefault();
     isRecording = false;
     _('mic').classList.remove('rec');
-    setStatus('proc', 'Translating...');
+    setStatus('proc', 'Processing...');
+
+    // Clear recording timer
+    if (recordTimer) { clearTimeout(recordTimer); recordTimer = null; }
+    if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
+    hideRecTimer();
 
     if (mediaRecorder && mediaRecorder.state !== 'inactive') {
         mediaRecorder.onstop = async () => {
@@ -99,33 +131,109 @@ function stopRec() {
             // Attach origKey to pending result
             window._pendingOrigKey = origKey;
 
-            if (ws && ws.readyState === 1) ws.send(combined.buffer);
+            if (ws && ws.readyState === 1) {
+                // Send metadata first 
+                let g = config.gender ? currentGender : null;
+                let a = config.age ? currentAge : null;
+                ws.send(JSON.stringify({type: 'meta', gender: g, age: a}));
+                // Then send audio buffer
+                ws.send(combined.buffer);
+            }
         };
         mediaRecorder.stop();
     }
 }
 
+// ═══ RECORDING TIMER ═════════════════════════════════
+function showRecTimer() {
+    let el = _('rec-timer');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'rec-timer';
+        el.className = 'rec-timer';
+        el.innerHTML = '<span class="rec-dot"></span><span id="rec-time">0.0s</span><span class="rec-max"> / 15s</span>';
+        document.body.appendChild(el);
+    }
+    el.classList.add('show');
+}
+
+function updateRecTimer() {
+    const el = _('rec-time');
+    if (!el) return;
+    const elapsed = ((Date.now() - recordStart) / 1000).toFixed(1);
+    el.textContent = elapsed + 's';
+    // Warn when nearing limit
+    const timer = _('rec-timer');
+    if (timer && (Date.now() - recordStart) > MAX_RECORD_MS * 0.8) {
+        timer.classList.add('warn');
+    }
+}
+
+function hideRecTimer() {
+    const el = _('rec-timer');
+    if (el) { el.classList.remove('show', 'warn'); }
+}
+
 // ═══ DISPLAY: Processing ═════════════════════════════
+let procStartTime = 0;
+let procTimerInterval = null;
+
 function showProcessing() {
     clearProcessing();
     hideWelcome();
+    procStartTime = Date.now();
     const s = _('sel-src').value, t = _('sel-tgt').value;
     const el = document.createElement('div');
     el.className = 'proc-card';
     el.id = 'proc-card';
     el.innerHTML = `
         <div class="proc-inner">
-            <div class="proc-dots"><i></i><i></i><i></i></div>
+            <div class="proc-stages">
+                <div class="proc-stage active" id="ps-stt">
+                    <div class="ps-dot"></div><span>Recognizing</span>
+                </div>
+                <div class="proc-stage" id="ps-translate">
+                    <div class="ps-dot"></div><span>Translating</span>
+                </div>
+                <div class="proc-stage" id="ps-tts">
+                    <div class="ps-dot"></div><span>Generating</span>
+                </div>
+            </div>
             <p class="proc-text">${LN[s]} → ${LN[t]}</p>
-            <p class="proc-sub">Recognizing speech and translating...</p>
+            <p class="proc-sub" id="proc-msg">Processing...</p>
+            <p class="proc-timer" id="proc-elapsed">0.0s</p>
         </div>`;
     _('chat').appendChild(el);
     _('chat').scrollTop = _('chat').scrollHeight;
+    procTimerInterval = setInterval(() => {
+        const el = _('proc-elapsed');
+        if (el) el.textContent = ((Date.now() - procStartTime) / 1000).toFixed(1) + 's';
+    }, 100);
+}
+
+function updateStage(d) {
+    // Update which pipeline stage is active
+    const stages = ['stt', 'translate', 'tts'];
+    stages.forEach(s => {
+        const el = _('ps-' + s);
+        if (!el) return;
+        if (s === d.stage) {
+            el.classList.add('active');
+            el.classList.remove('done');
+        } else if (stages.indexOf(s) < stages.indexOf(d.stage)) {
+            el.classList.remove('active');
+            el.classList.add('done');
+        }
+    });
+    const msg = _('proc-msg');
+    if (msg && d.msg) msg.textContent = d.msg;
+    setStatus('proc', d.msg || 'Processing...');
 }
 
 function clearProcessing() {
     const p = _('proc-card');
     if (p) p.remove();
+    if (procTimerInterval) { clearInterval(procTimerInterval); procTimerInterval = null; }
 }
 
 function hideWelcome() {
@@ -367,9 +475,13 @@ function toggleSidebar() {
 }
 
 function toggleSettings() {
-    const o = _('settings').classList.toggle('open');
-    _('set-shade').classList.toggle('open');
-    if (o) fetchSys();
+    const dialog = _('settings');
+    if (dialog.open) {
+        dialog.close();
+    } else {
+        dialog.showModal();
+        fetchSys();
+    }
 }
 
 async function fetchSys() {
@@ -381,9 +493,92 @@ async function fetchSys() {
         _('s-used').textContent = d.ram_used_mb + 'MB';
         _('ram-bar').style.width = d.ram_pct + '%';
         _('model-list').innerHTML = Object.entries(d.models).map(([k, v]) =>
-            `<div class="set-model"><span class="mn">${k.replace(/_/g, ' ')}</span><span class="mv">${v}</span></div>`
+            `<div class="sm-model"><span class="mn">${k.replace(/_/g, ' ')}</span><span class="mv">${v}</span></div>`
         ).join('');
     } catch {}
+}
+
+function loadConfig() {
+    try {
+        const c = JSON.parse(localStorage.getItem('bs_cfg'));
+        if (c) Object.assign(config, c);
+    } catch {}
+    _('cfg-camera').checked = config.camera;
+    _('cfg-gender').checked = config.gender;
+    _('cfg-age').checked = config.age;
+    _('cfg-mood').checked = config.mood;
+    if (config.camera) setTimeout(startFaceApi, 1000);
+}
+
+function onConfigChange() {
+    config.camera = _('cfg-camera').checked;
+    config.gender = _('cfg-gender').checked;
+    config.age = _('cfg-age').checked;
+    config.mood = _('cfg-mood').checked;
+    localStorage.setItem('bs_cfg', JSON.stringify(config));
+    
+    if (config.camera) startFaceApi();
+    else stopFaceApi();
+    
+    if (!config.mood) _('mood-tracker').classList.add('hide');
+}
+
+async function startFaceApi() {
+    if (cameraActive) return;
+    try {
+        if (!faceApiLoaded) {
+            await Promise.all([
+                faceapi.nets.tinyFaceDetector.loadFromUri('/static/models'),
+                faceapi.nets.faceExpressionNet.loadFromUri('/static/models'),
+                faceapi.nets.ageGenderNet.loadFromUri('/static/models')
+            ]);
+            faceApiLoaded = true;
+        }
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 }});
+        _('video-feed').srcObject = stream;
+        cameraActive = true;
+        requestAnimationFrame(processFaceApi);
+    } catch (e) { 
+        console.error('FaceAPI Init Error:', e); 
+        alert('Camera Error: ' + e.message + '\n\nPlease ensure your camera is plugged in, and your browser has permission to access it.');
+        _('cfg-camera').checked = false;
+        config.camera = false;
+        localStorage.setItem('bs_cfg', JSON.stringify(config));
+    }
+}
+
+function stopFaceApi() {
+    const v = _('video-feed');
+    if (v && v.srcObject) {
+        v.srcObject.getTracks().forEach(t => t.stop());
+        v.srcObject = null;
+    }
+    cameraActive = false;
+    _('mood-tracker').classList.add('hide');
+}
+
+async function processFaceApi() {
+    if (!cameraActive || !config.camera) return;
+    const v = _('video-feed');
+    if (v.readyState === 4) {
+        const det = await faceapi.detectSingleFace(v, new faceapi.TinyFaceDetectorOptions()).withFaceExpressions().withAgeAndGender();
+        if (det) {
+            currentGender = det.gender;
+            currentAge = det.age;
+            if (config.mood) {
+                const ex = det.expressions;
+                let maxE = 'neutral', maxV = 0;
+                for (let e in ex) { if (ex[e] > maxV) { maxV = ex[e]; maxE = e; } }
+                const emojis = { happy: '😊', sad: '😢', angry: '😠', fearful: '😨', disgusted: '🤢', surprised: '😲', neutral: '😐' };
+                _('mood-emoji').textContent = emojis[maxE] || '😐';
+                _('mood-text').textContent = 'Customer looks ' + maxE;
+                _('mood-tracker').classList.remove('hide');
+            } else {
+                _('mood-tracker').classList.add('hide');
+            }
+        }
+    }
+    setTimeout(() => requestAnimationFrame(processFaceApi), 300); // 3-4 FPS
 }
 
 // ═══ LANGUAGE ═════════════════════════════════════════

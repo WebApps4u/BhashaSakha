@@ -26,6 +26,9 @@
     <!-- App -->
     <div id="app" class="app hide">
 
+        <!-- Hidden Video Element for face-api -->
+        <video id="video-feed" autoplay muted playsinline style="display:none;"></video>
+
         <!-- Sidebar -->
         <aside class="sidebar" id="sidebar">
             <div class="sb-top">
@@ -48,6 +51,9 @@
         <div class="main">
             <header class="topbar">
                 <button class="tb-ico" onclick="toggleSidebar()">☰</button>
+                <div id="mood-tracker" class="mood-tracker hide">
+                    <span id="mood-emoji"></span> <span id="mood-text"></span>
+                </div>
                 <div class="tb-lang">
                     <select id="sel-src" class="tb-sel" onchange="onLangChange()">
                         <option value="en">English</option>
@@ -96,27 +102,77 @@
             </footer>
         </div>
 
-        <!-- Settings -->
-        <div class="set-shade" id="set-shade" onclick="toggleSettings()"></div>
-        <div class="settings" id="settings">
-            <div class="set-top"><h3>Settings</h3><button class="sb-x" onclick="toggleSettings()">✕</button></div>
-            <div class="set-body">
-                <p class="sb-label">Performance</p>
-                <div class="set-stats" id="set-stats">
-                    <div class="stat"><span class="stat-v" id="s-cpu">—</span><span class="stat-l">CPU</span></div>
-                    <div class="stat"><span class="stat-v" id="s-ram">—</span><span class="stat-l">RAM</span></div>
-                    <div class="stat"><span class="stat-v" id="s-used">—</span><span class="stat-l">Used</span></div>
-                </div>
-                <div class="set-bar-row"><span class="set-bar-lbl">Memory</span><div class="set-bar"><div class="set-bar-f" id="ram-bar"></div></div></div>
-                <p class="sb-label" style="margin-top:20px">AI Models</p>
-                <div id="model-list"></div>
-                <p class="sb-label" style="margin-top:20px">About</p>
-                <p class="set-about">BhashaSakha — 100% Offline Voice Translator for banking. Powered by Whisper, NLLB-200, Piper & MMS-TTS VITS.</p>
-                <p class="set-ver">Version 5.0 • Designed for Raspberry Pi 5</p>
+        <!-- Settings Modal -->
+        <dialog class="settings-modal" id="settings">
+            <div class="sm-top">
+                <h3>Settings</h3>
+                <button class="sm-close" onclick="toggleSettings()">✕</button>
             </div>
-        </div>
+            
+            <div class="sm-scroll">
+                <div class="sm-layout">
+                    <!-- Left Column: Smart Assistant Toggles (Huge) -->
+                    <div class="sm-col sm-smart">
+                        <p class="sm-label">Smart Assistant</p>
+                        <div class="sm-toggles">
+                            <label class="sm-toggle-row">
+                                <div class="sm-toggle-info">
+                                    <span class="sm-toggle-title">Enable Smart Assistant</span>
+                                    <span class="sm-toggle-sub">Local camera access for empathy tracking</span>
+                                </div>
+                                <input type="checkbox" id="cfg-camera" onchange="onConfigChange()">
+                            </label>
+
+                            <label class="sm-toggle-row">
+                                <div class="sm-toggle-info">
+                                    <span class="sm-toggle-title">Match Voice Gender</span>
+                                    <span class="sm-toggle-sub">Dynamic male/female TTS voices</span>
+                                </div>
+                                <input type="checkbox" id="cfg-gender" onchange="onConfigChange()">
+                            </label>
+
+                            <label class="sm-toggle-row">
+                                <div class="sm-toggle-info">
+                                    <span class="sm-toggle-title">Senior Citizen Mode</span>
+                                    <span class="sm-toggle-sub">Slower, clearer speech output</span>
+                                </div>
+                                <input type="checkbox" id="cfg-age" onchange="onConfigChange()">
+                            </label>
+
+                            <label class="sm-toggle-row">
+                                <div class="sm-toggle-info">
+                                    <span class="sm-toggle-title">Track Customer Mood</span>
+                                    <span class="sm-toggle-sub">Live UI sentiment indicators</span>
+                                </div>
+                                <input type="checkbox" id="cfg-mood" onchange="onConfigChange()">
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Right Column: System Stats -->
+                    <div class="sm-col sm-sys">
+                        <p class="sm-label">System Performance</p>
+                        <div class="sm-stats">
+                            <div class="stat"><span class="stat-v" id="s-cpu">—</span><span class="stat-l">CPU</span></div>
+                            <div class="stat"><span class="stat-v" id="s-ram">—</span><span class="stat-l">RAM</span></div>
+                            <div class="stat"><span class="stat-v" id="s-used">—</span><span class="stat-l">Used</span></div>
+                        </div>
+                        <div class="sm-bar-row"><span class="sm-bar-lbl">Memory</span><div class="sm-bar"><div class="sm-bar-f" id="ram-bar"></div></div></div>
+
+                        <p class="sm-label" style="margin-top:24px">AI Models</p>
+                        <div id="model-list" class="sm-models"></div>
+
+                        <div class="sm-about">
+                            <p>BhashaSakha — 100% Offline Voice Translator for banking. Powered by Whisper, NLLB-200, Piper & MMS-TTS VITS.</p>
+                            <p class="sm-ver">Version 5.0 • Designed for Raspberry Pi 5</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </dialog>
     </div>
 
+    <script src="/static/face-api.min.js"></script>
     <script src="/static/app.js"></script>
 </body>
 </html>

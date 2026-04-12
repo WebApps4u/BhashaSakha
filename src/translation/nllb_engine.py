@@ -58,10 +58,18 @@ class NLLBEngine:
             )
 
             # Load tokenizer (HuggingFace — for tokenization only)
-            self._tokenizer = AutoTokenizer.from_pretrained(
-                self.tokenizer_name,
-                local_files_only=False,  # Will cache after first download
-            )
+            # Try offline first (kiosk mode), fall back to online
+            try:
+                self._tokenizer = AutoTokenizer.from_pretrained(
+                    self.tokenizer_name,
+                    local_files_only=True,
+                )
+            except Exception:
+                logger.info("NLLB tokenizer not cached locally, downloading...")
+                self._tokenizer = AutoTokenizer.from_pretrained(
+                    self.tokenizer_name,
+                    local_files_only=False,
+                )
 
             elapsed = (time.monotonic() - start) * 1000
             logger.info(
