@@ -62,21 +62,11 @@ def load_engines():
 
     from faster_whisper import WhisperModel
     t0 = time.monotonic()
-    # Use whisper-tiny for speed (4x faster than small)
-    # Falls back to whisper-small if tiny not available
-    stt_model = "tiny"
-    stt_local = "models/stt/whisper-small-int8"
-    if os.path.exists(stt_local):
-        # Try tiny first (auto-downloads ~75MB), fall back to local small
-        try:
-            whisper = WhisperModel("tiny", device="cpu", compute_type="int8", cpu_threads=2)
-            log.info(f"✓ Whisper-tiny: {(time.monotonic()-t0)*1000:.0f}ms")
-        except Exception:
-            whisper = WhisperModel(stt_local, device="cpu", compute_type="int8", cpu_threads=2)
-            log.info(f"✓ Whisper-small (fallback): {(time.monotonic()-t0)*1000:.0f}ms")
-    else:
-        whisper = WhisperModel("tiny", device="cpu", compute_type="int8", cpu_threads=2)
-        log.info(f"✓ Whisper-tiny: {(time.monotonic()-t0)*1000:.0f}ms")
+    whisper = WhisperModel(
+        "models/stt/whisper-small-int8",
+        device="cpu", compute_type="int8", cpu_threads=2,
+    )
+    log.info(f"✓ Whisper-small: {(time.monotonic()-t0)*1000:.0f}ms")
 
     # Warmup with forced language (faster path)
     dummy = np.zeros(16000, dtype=np.float32)
@@ -91,7 +81,6 @@ def load_engines():
     nllb = NLLBEngine(
         model_path="models/translation/nllb-200-distilled-600M-ct2-int8",
         tokenizer_name="facebook/nllb-200-distilled-600M",
-        beam_size=1,  # Speed: beam_size=1 is ~40% faster, minimal quality loss for short phrases
     )
     nllb.load()
     nllb.warmup()
@@ -105,6 +94,7 @@ def load_engines():
         from transformers import VitsModel, AutoTokenizer
         import torch
         t0 = time.monotonic()
+        # Try offline first (kiosk mode), fall back to online
         try:
             mr_tts_model = VitsModel.from_pretrained("facebook/mms-tts-mar", local_files_only=True)
             mr_tts_tokenizer = AutoTokenizer.from_pretrained("facebook/mms-tts-mar", local_files_only=True)
@@ -112,7 +102,6 @@ def load_engines():
             log.info("MMS-TTS not cached locally, downloading...")
             mr_tts_model = VitsModel.from_pretrained("facebook/mms-tts-mar")
             mr_tts_tokenizer = AutoTokenizer.from_pretrained("facebook/mms-tts-mar")
-        mr_tts_model.eval()  # Set to eval mode for faster inference
         mr_tts_sr = mr_tts_model.config.sampling_rate
         log.info(f"✓ MMS-TTS Marathi: {(time.monotonic()-t0)*1000:.0f}ms")
     except Exception as e:
@@ -282,24 +271,14 @@ def gen_tts(text: str, lang: str, gender: str = None, age: int = None) -> str:
     engines = _engines
 
     # Marathi: MMS-TTS (neural VITS voice)
-    # Optimization: only synthesize FIRST SENTENCE to keep TTS fast
-    # Full translation text is still shown on screen
     if lang == "mr" and engines.get("mr_tts_model"):
         try:
             import torch
             model = engines["mr_tts_model"]
             tokenizer = engines["mr_tts_tokenizer"]
             sr = engines["mr_tts_sr"]
-            # Truncate to first sentence (max 80 chars) for speed
-            tts_text = text
-            for sep in ['।', '.', ',', '!', '?']:
-                if sep in tts_text:
-                    tts_text = tts_text[:tts_text.index(sep)+1]
-                    break
-            if len(tts_text) > 80:
-                tts_text = tts_text[:80]
-            inputs = tokenizer(tts_text, return_tensors="pt")
-            with torch.inference_mode():
+            inputs = tokenizer(text, return_tensors="pt")
+            with torch.no_grad():
                 waveform = model(**inputs).waveform
             audio = waveform.squeeze().numpy()
             import scipy
