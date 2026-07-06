@@ -1,0 +1,709 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 8516 >>
+stream
+q
+1 w
+0.07 0.1 0.16 rg
+0 736 595 106 re
+f
+Q
+q
+1 w
+0.1 0.62 0.58 rg
+34 750 118 4 re
+f
+Q
+BT
+/F2 10 Tf
+0.72 0.79 0.88 rg
+1 0 0 1 34 808 Tm
+(APPLICATION SUMMARY) Tj
+ET
+BT
+/F2 26 Tf
+1 1 1 rg
+1 0 0 1 34 774 Tm
+(BhashaSakha) Tj
+ET
+BT
+/F1 11.5 Tf
+0.86 0.89 0.94 rg
+1 0 0 1 34 757.5 Tm
+(Live speech capture, translation, playback, and session intelligence) Tj
+ET
+q
+0.8 w
+0.12 0.16 0.24 rg
+0.28 0.34 0.44 RG
+467 787 94 24 re
+B
+Q
+BT
+/F2 9.5 Tf
+1 1 1 rg
+1 0 0 1 482 794.5 Tm
+(Supabase + AI) Tj
+ET
+q
+0.8 w
+0.12 0.16 0.24 rg
+0.28 0.34 0.44 RG
+375 787 82 24 re
+B
+Q
+BT
+/F2 9.5 Tf
+1 1 1 rg
+1 0 0 1 387.48 794.5 Tm
+(Express API) Tj
+ET
+q
+0.8 w
+0.12 0.16 0.24 rg
+0.28 0.34 0.44 RG
+279 787 86 24 re
+B
+Q
+BT
+/F2 9.5 Tf
+1 1 1 rg
+1 0 0 1 294.65 794.5 Tm
+(React + Vite) Tj
+ET
+q
+1 w
+0.95 0.96 0.98 rg
+0.89 0.91 0.94 RG
+34 552 255.5 164 re
+B
+Q
+q
+1 w
+0.95 0.96 0.98 rg
+0.89 0.91 0.94 RG
+305.5 552 255.5 164 re
+B
+Q
+BT
+/F2 13 Tf
+0.07 0.1 0.16 rg
+1 0 0 1 50 687 Tm
+(Purpose) Tj
+ET
+BT
+/F1 10.8 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 50 665.2 Tm
+(BhashaSakha is a web application that turns) Tj
+ET
+BT
+/F1 10.8 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 50 651.2 Tm
+(live speech into readable captions,) Tj
+ET
+BT
+/F1 10.8 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 50 637.2 Tm
+(translated text, and optional translated) Tj
+ET
+BT
+/F1 10.8 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 50 623.2 Tm
+(audio. It saves every conversation as a) Tj
+ET
+BT
+/F1 10.8 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 50 609.2 Tm
+(session, supports shareable live links, and) Tj
+ET
+BT
+/F1 10.8 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 50 595.2 Tm
+(gives teams a post-session workspace for) Tj
+ET
+BT
+/F1 10.8 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 50 581.2 Tm
+(review, editing, and export.) Tj
+ET
+BT
+/F2 10.2 Tf
+0.16 0.36 0.74 rg
+1 0 0 1 50 559.8 Tm
+(Workflow fit) Tj
+ET
+BT
+/F1 10.2 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 50 542.8 Tm
+(General conversations, interviews, and banking-focused service flows) Tj
+ET
+BT
+/F2 13 Tf
+0.07 0.1 0.16 rg
+1 0 0 1 321.5 687 Tm
+(Key Value Proposition) Tj
+ET
+BT
+/F1 9.8 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 321.5 664.2 Tm
+(-) Tj
+ET
+BT
+/F1 9.8 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 333.5 664.2 Tm
+(Reduces language friction in live) Tj
+ET
+BT
+/F1 9.8 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 333.5 651.2 Tm
+(conversations without requiring separate) Tj
+ET
+BT
+/F1 9.8 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 333.5 638.2 Tm
+(capture, translation, and note-taking tools.) Tj
+ET
+BT
+/F1 9.8 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 321.5 623.2 Tm
+(-) Tj
+ET
+BT
+/F1 9.8 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 333.5 623.2 Tm
+(Combines real-time viewing, saved session) Tj
+ET
+BT
+/F1 9.8 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 333.5 610.2 Tm
+(history, editing, export, and audio playback in) Tj
+ET
+BT
+/F1 9.8 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 333.5 597.2 Tm
+(one workflow.) Tj
+ET
+BT
+/F1 9.8 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 321.5 582.2 Tm
+(-) Tj
+ET
+BT
+/F1 9.8 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 333.5 582.2 Tm
+(Adds governance layers such as) Tj
+ET
+BT
+/F1 9.8 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 333.5 569.2 Tm
+(subscriptions, model selection, quotas,) Tj
+ET
+BT
+/F1 9.8 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 333.5 556.2 Tm
+(routing, and audit-friendly domain) Tj
+ET
+BT
+/F1 9.8 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 333.5 543.2 Tm
+(workflows.) Tj
+ET
+q
+1 w
+1 1 1 rg
+0.89 0.91 0.94 RG
+34 350 527 186 re
+B
+Q
+BT
+/F2 13 Tf
+0.07 0.1 0.16 rg
+1 0 0 1 50 507 Tm
+(Core Features) Tj
+ET
+q
+1 w
+0.89 0.91 0.94 RG
+50 498 m
+545 498 l
+S
+Q
+BT
+/F1 10 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 50 472 Tm
+(-) Tj
+ET
+BT
+/F1 10 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 62 472 Tm
+(Browser speech recognition with interim) Tj
+ET
+BT
+/F1 10 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 62 459 Tm
+(captions, phrase-based segment saving, and) Tj
+ET
+BT
+/F1 10 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 62 446 Tm
+(optional automatic source-language detection.) Tj
+ET
+BT
+/F1 10 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 50 431 Tm
+(-) Tj
+ET
+BT
+/F1 10 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 62 431 Tm
+(Real-time translation into multiple target) Tj
+ET
+BT
+/F1 10 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 62 418 Tm
+(languages with per-line text-to-speech playback) Tj
+ET
+BT
+/F1 10 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 62 405 Tm
+(and voice preferences.) Tj
+ET
+BT
+/F1 10 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 50 390 Tm
+(-) Tj
+ET
+BT
+/F1 10 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 62 390 Tm
+(Saved session dashboard, live canvas, public) Tj
+ET
+BT
+/F1 10 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 62 377 Tm
+(viewer mode, transcript editing, and TXT or) Tj
+ET
+BT
+/F1 10 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 62 364 Tm
+(VTT export.) Tj
+ET
+BT
+/F1 10 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 305.5 472 Tm
+(-) Tj
+ET
+BT
+/F1 10 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 317.5 472 Tm
+(Session modes for general, interview, and) Tj
+ET
+BT
+/F1 10 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 317.5 459 Tm
+(banking scenarios.) Tj
+ET
+BT
+/F1 10 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 305.5 444 Tm
+(-) Tj
+ET
+BT
+/F1 10 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 317.5 444 Tm
+(Banking workflow detects sensitive entities,) Tj
+ET
+BT
+/F1 10 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 317.5 431 Tm
+(stores redacted risk items, and can generate a) Tj
+ET
+BT
+/F1 10 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 317.5 418 Tm
+(structured AI case form from the transcript.) Tj
+ET
+BT
+/F1 10 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 305.5 403 Tm
+(-) Tj
+ET
+BT
+/F1 10 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 317.5 403 Tm
+(Usage, plan, and model-selection pages plus an) Tj
+ET
+BT
+/F1 10 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 317.5 390 Tm
+(admin console for AI providers, models,) Tj
+ET
+BT
+/F1 10 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 317.5 377 Tm
+(routing, entitlements, settings, flags, and logs.) Tj
+ET
+q
+1 w
+0.95 0.96 0.98 rg
+0.89 0.91 0.94 RG
+34 146 527 188 re
+B
+Q
+BT
+/F2 13 Tf
+0.07 0.1 0.16 rg
+1 0 0 1 50 305 Tm
+(Architecture) Tj
+ET
+BT
+/F1 10.1 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 50 284.9 Tm
+(The current repo implements a browser-first frontend, an Express API layer, a Supabase-backed data) Tj
+ET
+BT
+/F1 10.1 Tf
+0.35 0.4 0.49 rg
+1 0 0 1 50 271.9 Tm
+(plane, and a provider-routed AI layer for translation, text generation, and TTS.) Tj
+ET
+q
+0.9 w
+1 1 1 rg
+0.8 0.84 0.9 RG
+50 182 91 60 re
+B
+Q
+BT
+/F2 9.8 Tf
+0.07 0.1 0.16 rg
+1 0 0 1 58 223.2 Tm
+(Capture UI) Tj
+ET
+BT
+/F1 8.1 Tf
+0.43 0.49 0.57 rg
+1 0 0 1 58 209.9 Tm
+(React, Vite,) Tj
+ET
+BT
+/F1 8.1 Tf
+0.43 0.49 0.57 rg
+1 0 0 1 58 199.9 Tm
+(Zustand, i18n,) Tj
+ET
+BT
+/F1 8.1 Tf
+0.43 0.49 0.57 rg
+1 0 0 1 58 189.9 Tm
+(browser speech) Tj
+ET
+BT
+/F1 8.1 Tf
+0.43 0.49 0.57 rg
+1 0 0 1 58 179.9 Tm
+(APIs) Tj
+ET
+q
+1 w
+0.52 0.58 0.66 RG
+143 212 m
+149 212 l
+S
+Q
+q
+1 w
+0.52 0.58 0.66 RG
+143 216 m
+149 212 l
+S
+Q
+q
+1 w
+0.52 0.58 0.66 RG
+143 208 m
+149 212 l
+S
+Q
+q
+0.9 w
+0.98 0.99 1 rg
+0.8 0.84 0.9 RG
+151 182 91 60 re
+B
+Q
+BT
+/F2 9.8 Tf
+0.07 0.1 0.16 rg
+1 0 0 1 159 223.2 Tm
+(Live Control) Tj
+ET
+BT
+/F1 8.1 Tf
+0.43 0.49 0.57 rg
+1 0 0 1 159 209.9 Tm
+(Session state,) Tj
+ET
+BT
+/F1 8.1 Tf
+0.43 0.49 0.57 rg
+1 0 0 1 159 199.9 Tm
+(segment queueing,) Tj
+ET
+BT
+/F1 8.1 Tf
+0.43 0.49 0.57 rg
+1 0 0 1 159 189.9 Tm
+(sharing, playback) Tj
+ET
+q
+1 w
+0.52 0.58 0.66 RG
+244 212 m
+250 212 l
+S
+Q
+q
+1 w
+0.52 0.58 0.66 RG
+244 216 m
+250 212 l
+S
+Q
+q
+1 w
+0.52 0.58 0.66 RG
+244 208 m
+250 212 l
+S
+Q
+q
+0.9 w
+1 1 1 rg
+0.8 0.84 0.9 RG
+252 182 91 60 re
+B
+Q
+BT
+/F2 9.8 Tf
+0.07 0.1 0.16 rg
+1 0 0 1 260 223.2 Tm
+(API Layer) Tj
+ET
+BT
+/F1 8.1 Tf
+0.43 0.49 0.57 rg
+1 0 0 1 260 209.9 Tm
+(Express routes for) Tj
+ET
+BT
+/F1 8.1 Tf
+0.43 0.49 0.57 rg
+1 0 0 1 260 199.9 Tm
+(live, translate,) Tj
+ET
+BT
+/F1 8.1 Tf
+0.43 0.49 0.57 rg
+1 0 0 1 260 189.9 Tm
+(TTS, models,) Tj
+ET
+BT
+/F1 8.1 Tf
+0.43 0.49 0.57 rg
+1 0 0 1 260 179.9 Tm
+(admin) Tj
+ET
+q
+1 w
+0.52 0.58 0.66 RG
+345 212 m
+351 212 l
+S
+Q
+q
+1 w
+0.52 0.58 0.66 RG
+345 216 m
+351 212 l
+S
+Q
+q
+1 w
+0.52 0.58 0.66 RG
+345 208 m
+351 212 l
+S
+Q
+q
+0.9 w
+0.98 0.99 1 rg
+0.8 0.84 0.9 RG
+353 182 91 60 re
+B
+Q
+BT
+/F2 9.8 Tf
+0.07 0.1 0.16 rg
+1 0 0 1 361 223.2 Tm
+(Data Plane) Tj
+ET
+BT
+/F1 8.1 Tf
+0.43 0.49 0.57 rg
+1 0 0 1 361 209.9 Tm
+(Supabase Auth,) Tj
+ET
+BT
+/F1 8.1 Tf
+0.43 0.49 0.57 rg
+1 0 0 1 361 199.9 Tm
+(Postgres, storage) Tj
+ET
+BT
+/F1 8.1 Tf
+0.43 0.49 0.57 rg
+1 0 0 1 361 189.9 Tm
+(cache, realtime) Tj
+ET
+q
+1 w
+0.52 0.58 0.66 RG
+446 212 m
+452 212 l
+S
+Q
+q
+1 w
+0.52 0.58 0.66 RG
+446 216 m
+452 212 l
+S
+Q
+q
+1 w
+0.52 0.58 0.66 RG
+446 208 m
+452 212 l
+S
+Q
+q
+0.9 w
+1 1 1 rg
+0.8 0.84 0.9 RG
+454 182 91 60 re
+B
+Q
+BT
+/F2 9.8 Tf
+0.07 0.1 0.16 rg
+1 0 0 1 462 223.2 Tm
+(AI Control) Tj
+ET
+BT
+/F1 8.1 Tf
+0.43 0.49 0.57 rg
+1 0 0 1 462 209.9 Tm
+(Provider keys,) Tj
+ET
+BT
+/F1 8.1 Tf
+0.43 0.49 0.57 rg
+1 0 0 1 462 199.9 Tm
+(routing, fallbacks,) Tj
+ET
+BT
+/F1 8.1 Tf
+0.43 0.49 0.57 rg
+1 0 0 1 462 189.9 Tm
+(quotas, metering) Tj
+ET
+BT
+/F1 9.6 Tf
+0.16 0.36 0.74 rg
+1 0 0 1 50 174.4 Tm
+(Realtime subscriptions power the shared viewer and session editor so transcript and translation updates appear live.) Tj
+ET
+BT
+/F1 8.8 Tf
+0.43 0.49 0.57 rg
+1 0 0 1 34 13.2 Tm
+(Based on the current repository structure and routes in the BhashaSakha codebase.) Tj
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+6 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+xref
+0 7
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000121 00000 n 
+0000000257 00000 n 
+0000008824 00000 n 
+0000008894 00000 n 
+trailer
+<< /Size 7 /Root 1 0 R >>
+startxref
+8969
+%%EOF
