@@ -6,8 +6,11 @@
 
 ## ✨ Features
 
-- **Push-to-talk voice translation** — hold mic, speak, release to translate
+- **Push-to-talk voice translation** — hold mic, speak (up to 30s), release to translate
+- **Typed text translation** — type instead of speaking, same pipeline
+- **Live streaming results** — recognized words appear as Whisper decodes, translation shows before TTS, and speech playback starts on the first sentence while the rest is still synthesizing
 - **3-language support** — English ↔ Hindi ↔ Marathi (any direction)
+- **Sentence-batch translation** — long speech is split into sentences and batch-translated (NLLB compresses/drops content if fed whole paragraphs)
 - **Natural TTS** — Piper VITS for Hindi/English, MMS-TTS VITS for Marathi
 - **Conversation history** — saved locally, ChatGPT-style sidebar
 - **Original voice playback** — replay your recorded speech alongside translation
@@ -144,15 +147,15 @@ terms:
 
 ### Server Settings
 Environment variables:
-- `OMP_NUM_THREADS=2` — CPU threads for inference
+- `BS_STT_MODEL` — override the Whisper model (default: local `whisper-small-int8`; do **not** use `tiny`/`base` for Hindi/Marathi — tiny hallucinates and base falls back to Urdu script)
 
 ## 📱 Target Hardware
 
-Designed for **Raspberry Pi 5** (8GB RAM) with:
-- ~2-3s STT on ARM64
-- ~1-2s translation
-- ~2-3s TTS
-- **Total: ~5-8s per translation** (vs ~15-20s on dev x86 CPU)
+Designed for **Raspberry Pi 5** (4 cores, all used per pipeline stage):
+- STT (whisper-small int8): ~1.5–2x realtime, streamed word-by-word
+- Translation (NLLB, sentence batch): ~1-2s per sentence
+- TTS: first sentence plays while the rest synthesizes
+- The UI shows recognized text and translation as soon as each stage finishes, so perceived wait is the STT time, not the whole pipeline
 
 ## 📄 License
 

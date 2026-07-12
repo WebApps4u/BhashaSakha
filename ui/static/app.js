@@ -5,14 +5,18 @@ let isRecording = false, isMuted = false;
 let conversations = [], currentConvId = null;
 
 // Recording limits
-const MAX_RECORD_MS = 15000; // 15 seconds max
+const MAX_RECORD_MS = 30000; // 30 seconds max (STT is ~1.5-2x realtime on Pi 5)
 let recordTimer = null;
 let recordStart = 0;
 let countdownInterval = null;
 
 // Audio store: play by key, not inline strings
+// Values are arrays of blob URLs (TTS arrives in chunks, played in order)
 const audioStore = {};
 let audioCounter = 0;
+
+// TTS chunks for the in-flight request (streamed while later chunks synth)
+let pendingTts = null;
 
 let config = { camera: false, gender: false, age: false, mood: false };
 let faceApiLoaded = false, cameraActive = false;
@@ -82,9 +86,41 @@ function handle(d) {
     }
     if (d.type === 'processing') showProcessing();
     if (d.type === 'stage') updateStage(d);
+    if (d.type === 'stt_partial') showLiveText('proc-src', 'You said', d.text + ' …');
+    if (d.type === 'stt_done') showLiveText('proc-src', 'You said', d.text);
+    if (d.type === 'trans_done') showLiveText('proc-tgt', 'Translation', d.text);
+    if (d.type === 'tts_chunk') onTtsChunk(d);
     if (d.type === 'result') showResult(d);
     if (d.type === 'silence') { clearProcessing(); setStatus('', 'No speech detected'); }
     if (d.type === 'error') { clearProcessing(); setStatus('', 'Error — try again'); }
+}
+
+// Progressive reveal inside the processing card
+function showLiveText(id, label, text) {
+    const el = _(id);
+    if (!el) return;
+    el.innerHTML = `<span class="proc-live-label">${label}</span>${esc(text)}`;
+    el.classList.add('show');
+    _('chat').scrollTop = _('chat').scrollHeight;
+}
+
+// ═══ STREAMED TTS CHUNKS ═════════════════════════════
+function onTtsChunk(d) {
+    if (!pendingTts) pendingTts = { urls: [], playIdx: 0, playing: false };
+    const raw = atob(d.tts);
+    const buf = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) buf[i] = raw.charCodeAt(i);
+    pendingTts.urls.push(URL.createObjectURL(new Blob([buf], { type: 'audio/wav' })));
+    if (!isMuted) playNextPendingChunk(pendingTts);
+}
+
+function playNextPendingChunk(p) {
+    if (p.playing || p.playIdx >= p.urls.length) return;
+    p.playing = true;
+    const a = new Audio(p.urls[p.playIdx++]);
+    a.onended = () => { p.playing = false; playNextPendingChunk(p); };
+    a.onerror = () => { p.playing = false; };
+    a.play().catch(() => { p.playing = false; });
 }
 
 function splashUp(t, p) {
@@ -162,12 +198,13 @@ function stopRec() {
             window._pendingOrigKey = origKey;
 
             if (ws && ws.readyState === 1) {
-                // Send metadata first 
+                // Send metadata first
                 let g = config.gender ? currentGender : null;
                 let a = config.age ? currentAge : null;
                 ws.send(JSON.stringify({type: 'meta', gender: g, age: a}));
                 // Then send audio buffer
                 ws.send(combined.buffer);
+                showProcessing();
             }
         };
         mediaRecorder.stop();
@@ -181,7 +218,7 @@ function showRecTimer() {
         el = document.createElement('div');
         el.id = 'rec-timer';
         el.className = 'rec-timer';
-        el.innerHTML = '<span class="rec-dot"></span><span id="rec-time">0.0s</span><span class="rec-max"> / 15s</span>';
+        el.innerHTML = `<span class="rec-dot"></span><span id="rec-time">0.0s</span><span class="rec-max"> / ${MAX_RECORD_MS / 1000}s</span>`;
         document.body.appendChild(el);
     }
     el.classList.add('show');
@@ -211,6 +248,7 @@ let procTimerInterval = null;
 function showProcessing() {
     clearProcessing();
     hideWelcome();
+    pendingTts = null;
     procStartTime = Date.now();
     const s = _('sel-src').value, t = _('sel-tgt').value;
     const el = document.createElement('div');
@@ -230,6 +268,8 @@ function showProcessing() {
                 </div>
             </div>
             <p class="proc-text">${LN[s]} → ${LN[t]}</p>
+            <p class="proc-live" id="proc-src"></p>
+            <p class="proc-live tgt" id="proc-tgt"></p>
             <p class="proc-sub" id="proc-msg">Processing...</p>
             <p class="proc-timer" id="proc-elapsed">0.0s</p>
         </div>`;
@@ -283,15 +323,20 @@ function showResult(d) {
     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const secs = (d.total_ms / 1000).toFixed(1);
 
-    // Store TTS audio
+    // TTS audio arrived as streamed chunks — keep them for replay
     let ttsKey = null;
-    if (d.tts) {
+    if (pendingTts && pendingTts.urls.length) {
+        ttsKey = 'tts_' + (++audioCounter);
+        audioStore[ttsKey] = pendingTts.urls;
+    } else if (d.tts) {
+        // Backward compat: single inline TTS payload
         ttsKey = 'tts_' + (++audioCounter);
         const raw = atob(d.tts);
         const buf = new Uint8Array(raw.length);
         for (let i = 0; i < raw.length; i++) buf[i] = raw.charCodeAt(i);
-        audioStore[ttsKey] = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+        audioStore[ttsKey] = [URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }))];
     }
+    pendingTts = null;
 
     // Get original voice key
     const origKey = window._pendingOrigKey || null;
@@ -349,30 +394,37 @@ function showResult(d) {
     setStatus('', 'Done — ' + secs + 's');
 
     saveMsg(d);
-    if (!isMuted && ttsKey) playAudio(ttsKey, null, 'Translation');
+    // Streamed chunks auto-play as they arrive; only play here for the
+    // legacy single-payload path
+    if (!isMuted && ttsKey && d.tts) playAudio(ttsKey, null, 'Translation');
 }
 
 // ═══ AUDIO PLAYBACK ══════════════════════════════════
 function playAudio(key, btn, label) {
-    const url = audioStore[key];
-    if (!url) return;
-    const a = new Audio(url);
-    if (btn) {
-        btn.classList.add('playing');
-        btn.querySelector('span').textContent = 'Playing...';
-    }
-    a.onended = () => {
+    let urls = audioStore[key];
+    if (!urls) return;
+    if (!Array.isArray(urls)) urls = [urls];
+
+    const reset = () => {
         if (btn) {
             btn.classList.remove('playing');
             btn.querySelector('span').textContent = 'Play';
         }
     };
-    a.play().catch(() => {
-        if (btn) {
-            btn.classList.remove('playing');
-            btn.querySelector('span').textContent = 'Play';
-        }
-    });
+    if (btn) {
+        btn.classList.add('playing');
+        btn.querySelector('span').textContent = 'Playing...';
+    }
+
+    let i = 0;
+    const playNext = () => {
+        if (i >= urls.length) { reset(); return; }
+        const a = new Audio(urls[i++]);
+        a.onended = playNext;
+        a.onerror = reset;
+        a.play().catch(reset);
+    };
+    playNext();
 }
 
 function copyText(btn, text) {
@@ -495,8 +547,8 @@ function welcomeHTML() {
     return `<div class="welcome" id="welcome">
         <div class="w-glyph"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg></div>
         <h2>Hold the mic &amp; speak</h2>
-        <p>Choose languages above, then hold the microphone to record your voice</p>
-        <p class="w-deva">ऊपर भाषा चुनें, माइक दबाकर बोलें</p>
+        <p>Choose languages above, then hold the microphone to record your voice — or type text below</p>
+        <p class="w-deva">ऊपर भाषा चुनें, माइक दबाकर बोलें या नीचे टाइप करें</p>
     </div>`;
 }
 
@@ -611,6 +663,27 @@ async function processFaceApi() {
         }
     }
     setTimeout(() => requestAnimationFrame(processFaceApi), 300); // 3-4 FPS
+}
+
+// ═══ TYPED TEXT INPUT ════════════════════════════════
+function sendText() {
+    const inp = _('text-in');
+    if (!inp) return;
+    const text = (inp.value || '').trim();
+    if (!text || !ws || ws.readyState !== 1) return;
+    inp.value = '';
+    window._pendingOrigKey = null;
+    showProcessing();
+    // No STT stage for typed input — mark it done immediately
+    updateStage({ stage: 'translate', msg: 'Translating...' });
+    ws.send(JSON.stringify({
+        type: 'text', text,
+        src: _('sel-src').value, tgt: _('sel-tgt').value,
+    }));
+}
+
+function onTextKey(e) {
+    if (e.key === 'Enter') { e.preventDefault(); sendText(); }
 }
 
 // ═══ LANGUAGE ═════════════════════════════════════════

@@ -5,10 +5,50 @@ Single model handles all 6 translation directions (hi↔mr↔en).
 """
 
 import logging
+import re
 import time
-from typing import Optional
+from typing import List, Optional
 
 logger = logging.getLogger(__name__)
+
+# Sentence boundaries: Latin punctuation + Devanagari danda/double-danda
+_SENT_SPLIT = re.compile(r"(?<=[।॥.!?])\s+")
+_CLAUSE_SPLIT = re.compile(r"(?<=[,;:])\s+")
+
+
+def split_sentences(text: str, max_chars: int = 140) -> List[str]:
+    """Split text into sentence-sized pieces for NLLB.
+
+    NLLB is a sentence-level model — feeding it multi-sentence input
+    makes it compress or drop content, so callers should translate
+    piece-by-piece.
+
+    Splits on ।, ॥, ., !, ? first; but Whisper's Hindi/Marathi output
+    is often a long run-on with no punctuation at all, so anything
+    still longer than max_chars is split on clause marks (, ; :) and
+    finally on word windows.
+    """
+    pieces = []
+    for sent in _SENT_SPLIT.split(text):
+        sent = sent.strip()
+        if not sent:
+            continue
+        if len(sent) <= max_chars:
+            pieces.append(sent)
+            continue
+        for clause in _CLAUSE_SPLIT.split(sent):
+            clause = clause.strip()
+            if not clause:
+                continue
+            if len(clause) <= max_chars:
+                pieces.append(clause)
+                continue
+            words = clause.split()
+            n_parts = len(clause) // max_chars + 1
+            step = max(8, (len(words) + n_parts - 1) // n_parts)
+            for i in range(0, len(words), step):
+                pieces.append(" ".join(words[i:i + step]))
+    return pieces
 
 
 class NLLBEngine:
@@ -22,18 +62,21 @@ class NLLBEngine:
     """
 
     def __init__(self, model_path: str, tokenizer_name: str,
-                 beam_size: int = 2, max_decoding_length: int = 128):
+                 beam_size: int = 2, max_decoding_length: int = 256,
+                 intra_threads: int = 2):
         """
         Args:
             model_path: Path to CTranslate2 model directory
             tokenizer_name: HuggingFace tokenizer name for NLLB
             beam_size: Beam size for translation (2 = fast)
-            max_decoding_length: Max output tokens
+            max_decoding_length: Max output tokens per sentence
+            intra_threads: CPU threads for inference
         """
         self.model_path = model_path
         self.tokenizer_name = tokenizer_name
         self.beam_size = beam_size
         self.max_decoding_length = max_decoding_length
+        self.intra_threads = intra_threads
         self._translator = None
         self._tokenizer = None
 
@@ -54,7 +97,7 @@ class NLLBEngine:
                 device="cpu",
                 compute_type="int8",
                 inter_threads=1,
-                intra_threads=2,  # Use 2 ARM cores
+                intra_threads=self.intra_threads,
             )
 
             # Load tokenizer (HuggingFace — for tokenization only)
@@ -83,6 +126,9 @@ class NLLBEngine:
     def translate(self, text: str, src_lang: str, tgt_lang: str) -> str:
         """Translate text between any supported language pair.
 
+        Multi-sentence input is split and translated as a batch —
+        NLLB drops/compresses content when given whole paragraphs.
+
         Args:
             text: Source text to translate
             src_lang: NLLB source language code (e.g., "hin_Deva")
@@ -93,64 +139,80 @@ class NLLBEngine:
         """
         if not text or not text.strip():
             return ""
+        if src_lang == tgt_lang:
+            return text
+
+        sentences = split_sentences(text)
+        results = self.translate_batch(sentences, src_lang, tgt_lang)
+        return " ".join(r for r in results if r).strip()
+
+    def translate_batch(self, texts: List[str], src_lang: str,
+                        tgt_lang: str) -> List[str]:
+        """Translate a list of sentences in one CTranslate2 batch call.
+
+        Args:
+            texts: Source sentences (one sentence each for best quality)
+            src_lang: NLLB source language code
+            tgt_lang: NLLB target language code
+
+        Returns:
+            List of translations, same order/length as input.
+            On failure an entry falls back to its source text.
+        """
+        if not texts:
+            return []
 
         if self._translator is None or self._tokenizer is None:
             logger.error("NLLB model not loaded")
-            return text
-
-        if src_lang == tgt_lang:
-            return text
+            return list(texts)
 
         start = time.monotonic()
 
         try:
-            # Tokenize with source language
+            # Tokenize each sentence with source language
             self._tokenizer.src_lang = src_lang
-            encoded = self._tokenizer(text, return_tensors=None)
-            input_ids = encoded["input_ids"]
+            source = []
+            for text in texts:
+                input_ids = self._tokenizer(text, return_tensors=None)["input_ids"]
+                source.append(self._tokenizer.convert_ids_to_tokens(input_ids))
 
-            # Convert to token strings for CTranslate2
-            source_tokens = self._tokenizer.convert_ids_to_tokens(input_ids)
-
-            # Translate with target language prefix
             results = self._translator.translate_batch(
-                source=[source_tokens],
-                target_prefix=[[tgt_lang]],
+                source=source,
+                target_prefix=[[tgt_lang]] * len(source),
                 beam_size=self.beam_size,
                 max_decoding_length=self.max_decoding_length,
                 replace_unknowns=True,
             )
 
-            # Decode output tokens
-            output_tokens = results[0].hypotheses[0]
-
-            # Remove the language token prefix if present
-            if output_tokens and output_tokens[0] == tgt_lang:
-                output_tokens = output_tokens[1:]
-
-            # Convert tokens back to text
-            output_ids = self._tokenizer.convert_tokens_to_ids(output_tokens)
-            translated = self._tokenizer.decode(
-                output_ids,
-                skip_special_tokens=True,
-                clean_up_tokenization_spaces=True,
-            )
+            translated = []
+            for res in results:
+                output_tokens = res.hypotheses[0]
+                if output_tokens and output_tokens[0] == tgt_lang:
+                    output_tokens = output_tokens[1:]
+                output_ids = self._tokenizer.convert_tokens_to_ids(output_tokens)
+                translated.append(self._tokenizer.decode(
+                    output_ids,
+                    skip_special_tokens=True,
+                    clean_up_tokenization_spaces=True,
+                ).strip())
 
             elapsed_ms = (time.monotonic() - start) * 1000
 
             # Log latency and direction (NOT the text — privacy)
+            in_chars = sum(len(t) for t in texts)
+            out_chars = sum(len(t) for t in translated)
             logger.info(
-                f"Translation: {src_lang}→{tgt_lang} "
-                f"in_chars={len(text)} out_chars={len(translated)} "
+                f"Translation: {src_lang}→{tgt_lang} sents={len(texts)} "
+                f"in_chars={in_chars} out_chars={out_chars} "
                 f"time={elapsed_ms:.0f}ms"
             )
 
-            return translated.strip()
+            return translated
 
         except Exception as e:
             elapsed_ms = (time.monotonic() - start) * 1000
             logger.error(f"Translation error ({src_lang}→{tgt_lang}): {e}")
-            return text  # Return original on failure
+            return list(texts)  # Return originals on failure
 
     def warmup(self):
         """Run dummy translation to warm up caches."""

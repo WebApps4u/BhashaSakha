@@ -684,6 +684,33 @@ button {
     font-variant-numeric: tabular-nums;
 }
 
+/* Live text reveal inside processing card (STT / translation as ready) */
+.proc-live {
+    display: none;
+    text-align: left;
+    margin: 10px auto 0;
+    max-width: 560px;
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--tx2);
+    background: var(--bg2);
+    border: 1px solid var(--bdr);
+    border-radius: var(--r);
+    padding: 8px 12px;
+    animation: cardSlideIn 0.25s var(--ease);
+}
+.proc-live.show { display: block; }
+.proc-live.tgt { color: var(--acc2); background: var(--acc-bg); border-color: var(--acc-bdr); }
+.proc-live-label {
+    display: block;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--mut);
+    margin-bottom: 2px;
+}
+
 /* Pipeline stages */
 .proc-stages {
     display: flex; align-items: center; justify-content: center;
@@ -794,6 +821,40 @@ button {
     display: flex; align-items: center;
     gap: 14px;
 }
+
+/* Typed-text translate row */
+.ib-textrow {
+    display: flex; align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+.ib-input {
+    flex: 1;
+    padding: 10px 14px;
+    border-radius: var(--r);
+    border: 1px solid var(--bdr2);
+    background: var(--bg2);
+    color: var(--tx);
+    font-size: 14px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s var(--ease), background-color 0.3s var(--ease);
+}
+.ib-input:focus { border-color: var(--acc); }
+.ib-input::placeholder { color: var(--mut); }
+.ib-send {
+    width: 40px; height: 40px;
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    border: none;
+    border-radius: var(--r);
+    background: var(--acc);
+    color: #fff;
+    cursor: pointer;
+    transition: background-color 0.2s var(--ease), transform 0.15s var(--ease);
+}
+.ib-send:hover { background: var(--acc2); }
+.ib-send:active { transform: scale(0.94); }
 
 .ib-info {
     flex: 1;

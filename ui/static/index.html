@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css?v=7">
 </head>
 <body>
 
@@ -103,12 +103,21 @@
                         <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
                     </div>
                     <h2>Hold the mic &amp; speak</h2>
-                    <p>Choose languages above, then hold the microphone to record your voice. Release to translate.</p>
-                    <p class="w-deva">ऊपर भाषा चुनें, माइक दबाकर बोलें</p>
+                    <p>Choose languages above, then hold the microphone to record your voice. Release to translate — or type text below.</p>
+                    <p class="w-deva">ऊपर भाषा चुनें, माइक दबाकर बोलें या नीचे टाइप करें</p>
                 </div>
             </main>
 
             <footer class="inputbar">
+                <div class="ib-textrow">
+                    <input type="text" id="text-in" class="ib-input"
+                        placeholder="Type text to translate — or hold the mic and speak"
+                        onkeydown="onTextKey(event)" autocomplete="off"
+                        aria-label="Type text to translate">
+                    <button class="ib-send" onclick="sendText()" aria-label="Translate typed text">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                    </button>
+                </div>
                 <div class="ib-row">
                     <div class="ib-info">
                         <span class="ib-dot" id="ib-dot"></span>
@@ -203,6 +212,6 @@
     </div>
 
     <script src="/static/face-api.min.js"></script>
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v=7"></script>
 </body>
 </html>
