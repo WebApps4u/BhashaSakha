@@ -6,37 +6,22 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
-User=bhashasakha
+User=babhan
 Group=audio
-WorkingDirectory=/opt/bhashasakha
+WorkingDirectory=/home/babhan/Documents/Live/bhashasakha
 
-ExecStartPre=/opt/bhashasakha/venv/bin/python /opt/bhashasakha/scripts/test_hardware.py --quick
-ExecStart=/opt/bhashasakha/venv/bin/python -m src.main --config config/config.yaml
+ExecStart=/home/babhan/Documents/Live/bhashasakha/.venv/bin/python ui/server.py
 
 Restart=on-failure
 RestartSec=10
-WatchdogSec=120
 
-# Resource limits
-MemoryMax=6G
-MemoryHigh=4G
-CPUQuota=95%
-
-# Security hardening
-ProtectSystem=strict
-ProtectHome=true
-NoNewPrivileges=true
-ReadWritePaths=/opt/bhashasakha/logs
+# Memory guard only — the kiosk should use ALL CPU cores
+MemoryMax=8G
 
 # Logging via journald
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=bhashasakha
-
-# Environment — limit thread count to prevent CPU contention
-Environment="OMP_NUM_THREADS=2"
-Environment="OPENBLAS_NUM_THREADS=2"
-Environment="ONNXRUNTIME_GLOBAL_THREAD_POOL_SIZE=2"
 
 [Install]
 WantedBy=multi-user.target
