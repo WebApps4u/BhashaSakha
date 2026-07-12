@@ -1,8 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="description" content="BhashaSakha — Offline voice translator for English, Hindi, and Marathi. Powered by Whisper, NLLB-200, and Piper TTS.">
     <title>BhashaSakha — Voice Translator</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -14,7 +15,6 @@
     <!-- Splash -->
     <div id="splash" class="splash show">
         <div class="splash-inner">
-            <div class="splash-glow"></div>
             <div class="splash-logo">भा</div>
             <h1 class="splash-title">BhashaSakha</h1>
             <p class="splash-sub">Offline Voice Translation</p>
@@ -36,13 +36,18 @@
                     <div class="sb-logo">भा</div>
                     <span>BhashaSakha</span>
                 </div>
-                <button class="sb-x" onclick="toggleSidebar()">✕</button>
+                <button class="sb-x" id="btn-sidebar-close" onclick="toggleSidebar()" aria-label="Close sidebar">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                </button>
             </div>
-            <button class="sb-new" onclick="newConversation()"><span>＋</span> New Conversation</button>
+            <button class="sb-new" id="btn-new-conv" onclick="newConversation()"><span>+</span> New Conversation</button>
             <p class="sb-label">Recent</p>
             <div class="sb-list" id="sb-list"><p class="sb-empty">No conversations yet</p></div>
             <div class="sb-bottom">
-                <button class="sb-link" onclick="toggleSettings()"><span>⚙</span> Settings</button>
+                <button class="sb-link" id="btn-settings" onclick="toggleSettings()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                    <span>Settings</span>
+                </button>
             </div>
         </aside>
         <div class="sb-shade" id="sb-shade" onclick="toggleSidebar()"></div>
@@ -50,33 +55,55 @@
         <!-- Main -->
         <div class="main">
             <header class="topbar">
-                <button class="tb-ico" onclick="toggleSidebar()">☰</button>
+                <!-- Menu button -->
+                <button class="tb-ico" id="btn-menu" onclick="toggleSidebar()" aria-label="Open menu">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+                </button>
+
+                <!-- Mood tracker -->
                 <div id="mood-tracker" class="mood-tracker hide">
                     <span id="mood-emoji"></span> <span id="mood-text"></span>
                 </div>
+
+                <!-- Language selectors -->
                 <div class="tb-lang">
-                    <select id="sel-src" class="tb-sel" onchange="onLangChange()">
+                    <select id="sel-src" class="tb-sel" onchange="onLangChange()" aria-label="Source language">
                         <option value="en">English</option>
                         <option value="hi">हिन्दी</option>
                         <option value="mr">मराठी</option>
                     </select>
-                    <button class="tb-swap" onclick="swapLangs()">⇄</button>
-                    <select id="sel-tgt" class="tb-sel" onchange="onLangChange()">
+
+                    <button class="tb-swap" id="btn-swap" onclick="swapLangs()" aria-label="Swap languages">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4"/></svg>
+                    </button>
+
+                    <select id="sel-tgt" class="tb-sel" onchange="onLangChange()" aria-label="Target language">
                         <option value="en">English</option>
                         <option value="hi" selected>हिन्दी</option>
                         <option value="mr">मराठी</option>
                     </select>
                 </div>
-                <button class="tb-ico" id="mute-btn" onclick="toggleMute()">🔊</button>
+
+                <!-- Theme toggle -->
+                <button class="theme-toggle" id="btn-theme" onclick="toggleTheme()" aria-label="Toggle theme">
+                    <svg id="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                    <svg id="icon-moon" class="hide" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                </button>
+
+                <!-- Mute button -->
+                <button class="tb-ico" id="mute-btn" onclick="toggleMute()" aria-label="Toggle audio">
+                    <svg id="icon-vol-on" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                    <svg id="icon-vol-off" class="hide" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
+                </button>
             </header>
 
             <main class="chat" id="chat">
                 <div class="welcome" id="welcome">
                     <div class="w-glyph">
-                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
+                        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
                     </div>
-                    <h2>Hold the mic & speak</h2>
-                    <p>Choose languages above, then hold the mic to record your voice. Release to translate.</p>
+                    <h2>Hold the mic &amp; speak</h2>
+                    <p>Choose languages above, then hold the microphone to record your voice. Release to translate.</p>
                     <p class="w-deva">ऊपर भाषा चुनें, माइक दबाकर बोलें</p>
                 </div>
             </main>
@@ -90,8 +117,9 @@
                     <button class="mic" id="mic"
                         onmousedown="startRec()" onmouseup="stopRec()"
                         ontouchstart="startRec()" ontouchend="stopRec()"
-                        oncontextmenu="return false">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                        oncontextmenu="return false"
+                        aria-label="Hold to record">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
                             <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
                             <line x1="12" y1="19" x2="12" y2="23"/>
@@ -106,12 +134,14 @@
         <dialog class="settings-modal" id="settings">
             <div class="sm-top">
                 <h3>Settings</h3>
-                <button class="sm-close" onclick="toggleSettings()">✕</button>
+                <button class="sm-close" id="btn-settings-close" onclick="toggleSettings()" aria-label="Close settings">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                </button>
             </div>
-            
+
             <div class="sm-scroll">
                 <div class="sm-layout">
-                    <!-- Left Column: Smart Assistant Toggles (Huge) -->
+                    <!-- Left Column: Smart Assistant Toggles -->
                     <div class="sm-col sm-smart">
                         <p class="sm-label">Smart Assistant</p>
                         <div class="sm-toggles">
@@ -159,12 +189,12 @@
                         </div>
                         <div class="sm-bar-row"><span class="sm-bar-lbl">Memory</span><div class="sm-bar"><div class="sm-bar-f" id="ram-bar"></div></div></div>
 
-                        <p class="sm-label" style="margin-top:24px">AI Models</p>
+                        <p class="sm-label" style="margin-top:20px">AI Models</p>
                         <div id="model-list" class="sm-models"></div>
 
                         <div class="sm-about">
-                            <p>BhashaSakha — 100% Offline Voice Translator for banking. Powered by Whisper, NLLB-200, Piper & MMS-TTS VITS.</p>
-                            <p class="sm-ver">Version 5.0 • Designed for Raspberry Pi 5</p>
+                            <p>BhashaSakha — 100% Offline Voice Translator for banking. Powered by Whisper, NLLB-200, Piper &amp; MMS-TTS VITS.</p>
+                            <p class="sm-ver">Version 6.1 · Designed for Raspberry Pi 5</p>
                         </div>
                     </div>
                 </div>

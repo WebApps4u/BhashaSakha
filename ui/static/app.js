@@ -1,4 +1,4 @@
-/* BhashaSakha v6.1 — Optimized for RPi5 Kiosk */
+/* BhashaSakha v6.1 — Minimalist UI (Zara-inspired) */
 
 let ws, mediaStream, mediaRecorder, audioChunks = [];
 let isRecording = false, isMuted = false;
@@ -23,12 +23,42 @@ const LN = {en: 'English', hi: 'हिन्दी', mr: 'मराठी'};
 const LANG_EMOJI = {en: '🇬🇧', hi: '🇮🇳', mr: '🇮🇳'};
 
 document.addEventListener('DOMContentLoaded', () => {
+    loadTheme();
     loadConvs(); 
     loadConfig();
     connect(); 
     renderSB();
     setTimeout(() => splashUp('Connecting...', 15), 200);
 });
+
+// ═══ THEME ════════════════════════════════════════════
+function loadTheme() {
+    const saved = localStorage.getItem('bs_theme');
+    const theme = saved || 'light';
+    document.documentElement.setAttribute('data-theme', theme);
+    updateThemeIcons(theme);
+}
+
+function toggleTheme() {
+    const current = document.documentElement.getAttribute('data-theme') || 'light';
+    const next = current === 'light' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('bs_theme', next);
+    updateThemeIcons(next);
+}
+
+function updateThemeIcons(theme) {
+    const sun = _('icon-sun');
+    const moon = _('icon-moon');
+    if (!sun || !moon) return;
+    if (theme === 'dark') {
+        sun.classList.add('hide');
+        moon.classList.remove('hide');
+    } else {
+        sun.classList.remove('hide');
+        moon.classList.add('hide');
+    }
+}
 
 // ═══ WEBSOCKET ════════════════════════════════════════
 function connect() {
@@ -274,7 +304,7 @@ function showResult(d) {
         <div class="tc-top">
             <span class="tc-lang-pair">
                 <span class="tc-lang src">${LN[d.src_lang]}</span>
-                <svg class="tc-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                <svg class="tc-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                 <span class="tc-lang tgt">${LN[d.tgt_lang]}</span>
             </span>
             <span class="tc-time">${timeStr}</span>
@@ -307,7 +337,7 @@ function showResult(d) {
         </div>
 
         <div class="tc-footer">
-            <span class="tc-metric">⚡ ${secs}s</span>
+            <span class="tc-metric">${secs}s</span>
             <button class="tc-copy" onclick="copyText(this,'${esc(d.tgt_text).replace(/'/g, "\\'")}')">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                 Copy
@@ -410,7 +440,7 @@ function openConv(id) {
             <div class="tc-top">
                 <span class="tc-lang-pair">
                     <span class="tc-lang src">${LN[m.sl]}</span>
-                    <svg class="tc-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                    <svg class="tc-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                     <span class="tc-lang tgt">${LN[m.tl]}</span>
                 </span>
                 <span class="tc-time">${t}</span>
@@ -426,7 +456,7 @@ function openConv(id) {
                     <p class="tc-text-tgt ${isLat ? 'latin' : ''}">${esc(m.tt)}</p>
                 </div>
             </div>
-            <div class="tc-footer"><span class="tc-metric">⚡ ${secs}s</span></div>`;
+            <div class="tc-footer"><span class="tc-metric">${secs}s</span></div>`;
         chat.appendChild(el);
     });
     chat.scrollTop = chat.scrollHeight;
@@ -454,15 +484,17 @@ function renderSB() {
                 <span class="sb-item-t">${esc(c.title)}</span>
                 <span class="sb-item-meta">${cnt} msg · ${d}</span>
             </div>
-            <button class="sb-item-del" onclick="deleteConv('${c.id}',event)" title="Delete">✕</button>
+            <button class="sb-item-del" onclick="deleteConv('${c.id}',event)" title="Delete">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
         </div>`;
     }).join('');
 }
 
 function welcomeHTML() {
     return `<div class="welcome" id="welcome">
-        <div class="w-glyph"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg></div>
-        <h2>Hold the mic & speak</h2>
+        <div class="w-glyph"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg></div>
+        <h2>Hold the mic &amp; speak</h2>
         <p>Choose languages above, then hold the microphone to record your voice</p>
         <p class="w-deva">ऊपर भाषा चुनें, माइक दबाकर बोलें</p>
     </div>`;
@@ -637,8 +669,10 @@ function setStatus(state, text) {
 
 function toggleMute() {
     isMuted = !isMuted;
-    _('mute-btn').classList.toggle('muted', isMuted);
-    _('mute-btn').textContent = isMuted ? '🔇' : '🔊';
+    const btn = _('mute-btn');
+    btn.classList.toggle('muted', isMuted);
+    _('icon-vol-on').classList.toggle('hide', isMuted);
+    _('icon-vol-off').classList.toggle('hide', !isMuted);
 }
 
 function esc(t) { const e = document.createElement('span'); e.textContent = t; return e.innerHTML; }

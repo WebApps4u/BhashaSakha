@@ -290,14 +290,16 @@ def gen_tts(text: str, lang: str, gender: str = None, age: int = None) -> str:
             model = engines["mr_tts_model"]
             tokenizer = engines["mr_tts_tokenizer"]
             sr = engines["mr_tts_sr"]
-            # Truncate to first sentence (max 80 chars) for speed
+            # Limit to 300 chars to avoid memory issues with MMS-TTS
             tts_text = text
-            for sep in ['।', '.', ',', '!', '?']:
-                if sep in tts_text:
-                    tts_text = tts_text[:tts_text.index(sep)+1]
-                    break
-            if len(tts_text) > 80:
-                tts_text = tts_text[:80]
+            if len(tts_text) > 300:
+                # Find the last sentence separator before 300 chars
+                safe_cut = 300
+                for i in range(300, 0, -1):
+                    if tts_text[i] in ['।', '.', '!', '?']:
+                        safe_cut = i + 1
+                        break
+                tts_text = tts_text[:safe_cut]
             inputs = tokenizer(tts_text, return_tensors="pt")
             with torch.inference_mode():
                 waveform = model(**inputs).waveform
