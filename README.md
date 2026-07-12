@@ -11,7 +11,7 @@
 - **Live streaming results** — recognized words appear as Whisper decodes, translation shows before TTS, and speech playback starts on the first sentence while the rest is still synthesizing
 - **3-language support** — English ↔ Hindi ↔ Marathi (any direction)
 - **Sentence-batch translation** — long speech is split into sentences and batch-translated (NLLB compresses/drops content if fed whole paragraphs)
-- **Natural TTS** — Piper VITS for Hindi/English, MMS-TTS VITS for Marathi
+- **Natural TTS** — Piper VITS for Hindi/English; Marathi uses the Hindi Piper voice by default for speed (set `BS_MR_TTS=mms` for the neural Marathi voice, better pronunciation but far slower on Pi)
 - **Conversation history** — saved locally, ChatGPT-style sidebar
 - **Original voice playback** — replay your recorded speech alongside translation
 - **System monitoring** — live CPU/RAM stats in settings panel
@@ -125,7 +125,8 @@ bhashasakha/
 
 | Component | Model | Size | Purpose |
 |-----------|-------|------|---------|
-| **STT** | Whisper-small (int8) | ~400MB | Speech-to-text, forced language |
+| **STT (hi/mr)** | Whisper-small (int8) | ~400MB | Speech-to-text, forced language |
+| **STT (en)** | Whisper-base (int8) | ~75MB | ~3x faster; English-only (base garbles Hindi/Marathi) |
 | **Translation** | NLLB-200-distilled-600M (int8) | ~600MB | Multilingual translation |
 | **TTS (Hindi)** | Piper VITS hi_IN-rohan | ~60MB | Natural Hindi speech |
 | **TTS (English)** | Piper VITS en_US-amy | ~60MB | Natural English speech |

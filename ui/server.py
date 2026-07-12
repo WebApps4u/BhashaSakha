@@ -70,18 +70,29 @@ def load_engines():
     t0 = time.monotonic()
     # "small" is the minimum size that transcribes Hindi/Marathi reliably
     # in Devanagari — tiny hallucinates and base falls back to Urdu script
-    # or garbles words. Use the hub (Systran) conversion: the local
+    # or garbles words. English is Whisper's strongest language, so a
+    # separate ~3x faster "base" model handles English sources.
+    # Use the hub (Systran) conversions: the local
     # models/stt/whisper-small-int8 conversion decodes garbage and loops.
-    # Override with BS_STT_MODEL.
     stt_model = os.environ.get("BS_STT_MODEL", "small")
     whisper = WhisperModel(stt_model, device="cpu", compute_type="int8", cpu_threads=4)
-    _stt_model_name = stt_model
-    log.info(f"✓ Whisper-{_stt_model_name}: {(time.monotonic()-t0)*1000:.0f}ms")
+    log.info(f"✓ Whisper-{stt_model} (hi/mr): {(time.monotonic()-t0)*1000:.0f}ms")
+
+    t0 = time.monotonic()
+    stt_en_model = os.environ.get("BS_STT_EN_MODEL", "base")
+    try:
+        whisper_en = WhisperModel(stt_en_model, device="cpu", compute_type="int8", cpu_threads=4)
+        log.info(f"✓ Whisper-{stt_en_model} (en): {(time.monotonic()-t0)*1000:.0f}ms")
+    except Exception as e:
+        log.warning(f"Whisper-{stt_en_model} failed ({e}), English uses {stt_model}")
+        whisper_en, stt_en_model = whisper, stt_model
+    _stt_model_name = f"{stt_model} (hi/mr) + {stt_en_model} (en)"
 
     # Warmup with forced language (faster path)
     dummy = np.zeros(16000, dtype=np.float32)
-    segs, _ = whisper.transcribe(dummy, beam_size=1, language="en", without_timestamps=True)
-    for _ in segs: pass
+    for m in {id(whisper): whisper, id(whisper_en): whisper_en}.values():
+        segs, _ = m.transcribe(dummy, beam_size=1, language="en", without_timestamps=True)
+        for _ in segs: pass
     log.info("✓ Whisper warmed up")
 
     from src.translation.nllb_engine import NLLBEngine
@@ -125,6 +136,7 @@ def load_engines():
 
     _engines = {
         "whisper": whisper,
+        "whisper_en": whisper_en,
         "nllb": nllb,
         "glossary": BankingGlossary("config/banking_glossary.yaml"),
         "cache": TranslationCache(max_size=200),
@@ -236,12 +248,13 @@ def do_stt(audio: np.ndarray, src_lang: str, on_partial=None) -> dict:
         return {"type": "silence"}
 
     t0 = time.monotonic()
+    model = engines["whisper_en"] if src_lang == "en" else engines["whisper"]
     # - timestamps ON: without them a whole 30s window is ONE segment
     #   capped at 448 tokens, which silently drops the tail of long
     #   Devanagari speech (token-heavy script)
     # - temperature fallback OFF: retries decode up to 5x slower and
     #   sampled (T>0) output is gibberish — greedy-only is fast + stable
-    segs, info = engines["whisper"].transcribe(
+    segs, info = model.transcribe(
         audio, language=src_lang, beam_size=1,
         condition_on_previous_text=False,
         temperature=0.0,
@@ -329,6 +342,14 @@ def chunk_for_tts(text: str, max_chars: int = TTS_CHUNK_CHARS) -> list:
 def gen_tts(text: str, lang: str, gender: str = None, age: int = None) -> str:
     """TTS: Cached Piper voices for hi/en, MMS-TTS for mr."""
     engines = _engines
+
+    # Marathi default: Piper's Hindi voice reads Devanagari Marathi
+    # near-instantly (slight Hindi accent). BS_MR_TTS=mms switches to
+    # the neural Marathi voice — nicer pronunciation but 5-40s per
+    # sentence on the Pi (PyTorch on CPU), which users found unusable.
+    if lang == "mr" and os.environ.get("BS_MR_TTS", "piper") != "mms" \
+            and any(p in _piper_voices for p in PIPER["hi"].values()):
+        lang = "hi"  # fall through to the Piper block below
 
     # Marathi: MMS-TTS (neural VITS voice)
     # Callers pass sentence-sized chunks, so no length cut needed here
@@ -425,7 +446,9 @@ async def api_system():
             "translation": "NLLB-200 (600M, int8)",
             "tts_hi": "Piper (VITS, hi_IN-rohan)",
             "tts_en": "Piper (VITS, en_US-amy)",
-            "tts_mr": "MMS-TTS (VITS, mar)",
+            "tts_mr": ("MMS-TTS (VITS, mar)"
+                       if os.environ.get("BS_MR_TTS", "piper") == "mms"
+                       else "Piper hi voice (fast; BS_MR_TTS=mms for neural)"),
         },
         "ready": _ready,
     }
@@ -516,6 +539,9 @@ async def ws_endpoint(websocket: WebSocket):
     try:
         while True:
             msg = await websocket.receive()
+            if msg.get("type") == "websocket.disconnect":
+                log.info("Client disconnected")
+                break
             if "text" in msg:
                 try:
                     data = json.loads(msg["text"])
