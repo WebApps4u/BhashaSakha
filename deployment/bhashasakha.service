@@ -10,6 +10,11 @@ User=babhan
 Group=audio
 WorkingDirectory=/home/babhan/Documents/Live/bhashasakha
 
+# Fully offline kiosk: never let model libraries call out to the internet
+# (avoids multi-second startup timeouts when no network is present)
+Environment="HF_HUB_OFFLINE=1"
+Environment="TRANSFORMERS_OFFLINE=1"
+
 ExecStart=/home/babhan/Documents/Live/bhashasakha/.venv/bin/python ui/server.py
 
 Restart=on-failure
