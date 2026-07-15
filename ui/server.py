@@ -523,7 +523,12 @@ app.mount("/static", StaticFiles(directory=str(static)), name="static")
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
-    return (static / "index.html").read_text()
+    # no-cache: kiosk browsers must always revalidate the shell so UI
+    # updates apply on plain reload (assets are versioned with ?v=N)
+    return HTMLResponse(
+        (static / "index.html").read_text(),
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 @app.get("/api/status")

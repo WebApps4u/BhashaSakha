@@ -892,6 +892,18 @@ mark.num {
     line-height: 1.4;
 }
 
+/* Narrow screens: icon-only buttons so the top bar never overflows */
+@media (max-width: 760px) {
+    .tb-next span,
+    .ib-phrases span,
+    .tb-role { display: none; }
+    .tb-next { padding: 8px; }
+    .ib-phrases { padding: 9px; }
+    .topbar { gap: 6px; padding: 10px 10px; }
+    .tb-lang { gap: 4px; }
+    .mic-label { max-width: 64px; overflow: hidden; text-overflow: ellipsis; }
+}
+
 /* Role label above language selectors */
 .tb-role {
     font-size: 9px;
