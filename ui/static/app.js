@@ -82,6 +82,7 @@ function handle(d) {
             _('splash').classList.remove('show');
             _('app').classList.remove('hide');
             initMic();
+            loadPhrases();
         }, 500);
     }
     if (d.type === 'processing') showProcessing();
@@ -142,17 +143,21 @@ async function initMic() {
     }
 }
 
-function startRec() {
+// Who is speaking: 'staff' translates staff→customer, 'cust' the reverse
+let recRole = 'staff';
+
+function startRec(ev, role) {
     if (isRecording || !mediaStream) return;
-    if (event) event.preventDefault();
+    if (ev) ev.preventDefault();
+    recRole = role || 'staff';
     isRecording = true;
     audioChunks = [];
     recordStart = Date.now();
     mediaRecorder = new MediaRecorder(mediaStream, { mimeType: bestMime() });
     mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
     mediaRecorder.start(50);
-    _('mic').classList.add('rec');
-    setStatus('rec', 'Recording — release to translate');
+    _(recRole === 'cust' ? 'mic-cust' : 'mic').classList.add('rec');
+    setStatus('rec', (recRole === 'cust' ? 'Customer' : 'Staff') + ' speaking — release to translate');
 
     // Show countdown timer
     showRecTimer();
@@ -164,11 +169,13 @@ function startRec() {
     }, MAX_RECORD_MS);
 }
 
-function stopRec() {
+function stopRec(ev) {
     if (!isRecording) return;
-    if (event) event.preventDefault();
+    if (ev) ev.preventDefault();
     isRecording = false;
     _('mic').classList.remove('rec');
+    const mc = _('mic-cust');
+    if (mc) mc.classList.remove('rec');
     setStatus('proc', 'Processing...');
 
     // Clear recording timer
@@ -185,10 +192,12 @@ function stopRec() {
             const origKey = 'orig_' + (++audioCounter);
             audioStore[origKey] = URL.createObjectURL(blob);
 
-            // Send as WAV
+            // Send as WAV — direction depends on who held the button
             const wavBlob = await toWav(blob);
             const wavBuf = await wavBlob.arrayBuffer();
-            const src = _('sel-src').value, tgt = _('sel-tgt').value;
+            const staffL = _('sel-src').value, custL = _('sel-tgt').value;
+            const src = recRole === 'cust' ? custL : staffL;
+            const tgt = recRole === 'cust' ? staffL : custL;
             const hdr = new Uint8Array([L[src] || 0, L[tgt] || 0]);
             const combined = new Uint8Array(hdr.length + wavBuf.byteLength);
             combined.set(hdr);
@@ -684,6 +693,50 @@ function sendText() {
 
 function onTextKey(e) {
     if (e.key === 'Enter') { e.preventDefault(); sendText(); }
+}
+
+// ═══ QUICK PHRASES ═══════════════════════════════════
+let phrasebook = null;
+
+async function loadPhrases() {
+    try {
+        const r = await fetch('/api/phrases');
+        phrasebook = await r.json();
+        renderPhrases();
+    } catch (e) { console.error('Phrases load failed:', e); }
+}
+
+function togglePhrases() {
+    const open = _('ph-sheet').classList.toggle('open');
+    _('ph-shade').classList.toggle('open', open);
+    if (open && !phrasebook) loadPhrases();
+    if (open) renderPhrases();
+}
+
+function renderPhrases() {
+    const body = _('ph-body');
+    if (!body || !phrasebook) return;
+    const staffL = _('sel-src').value, custL = _('sel-tgt').value;
+    body.innerHTML = (phrasebook.categories || []).map(cat => `
+        <p class="ph-cat">${esc(cat.name[staffL] || cat.name.en)}</p>
+        <div class="ph-grid">
+            ${(cat.phrases || []).map(p => `
+                <button class="ph-item" onclick="sendPhrase('${p.id}')">
+                    <span class="ph-main">${esc(p[staffL] || p.en)}</span>
+                    <span class="ph-sub">${esc(p[custL] || '')}</span>
+                </button>`).join('')}
+        </div>`).join('');
+}
+
+function sendPhrase(id) {
+    if (!ws || ws.readyState !== 1) return;
+    togglePhrases();
+    hideWelcome();
+    pendingTts = null;
+    ws.send(JSON.stringify({
+        type: 'phrase', id,
+        src: _('sel-src').value, tgt: _('sel-tgt').value,
+    }));
 }
 
 // ═══ LANGUAGE ═════════════════════════════════════════

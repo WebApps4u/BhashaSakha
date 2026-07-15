@@ -1,0 +1,103 @@
+# BhashaSakha counter phrasebook
+# One-tap phrases: pre-written in all 3 languages, pre-synthesized TTS.
+# Edit freely — audio regenerates automatically for changed phrases.
+
+categories:
+  - name: { en: "Greetings", hi: "अभिवादन", mr: "अभिवादन" }
+    phrases:
+      - id: welcome
+        en: "Welcome! How can I help you?"
+        hi: "नमस्ते! मैं आपकी क्या मदद कर सकता हूँ?"
+        mr: "नमस्कार! मी तुमची काय मदत करू शकतो?"
+      - id: wait_moment
+        en: "Please wait a moment."
+        hi: "कृपया थोड़ा इंतज़ार करें।"
+        mr: "कृपया थोडा वेळ थांबा."
+      - id: next_counter
+        en: "Please go to the next counter."
+        hi: "कृपया अगले काउंटर पर जाइए।"
+        mr: "कृपया पुढच्या काउंटरवर जा."
+      - id: anything_else
+        en: "Do you need any other help?"
+        hi: "क्या आपको कोई और मदद चाहिए?"
+        mr: "तुम्हाला आणखी काही मदत हवी आहे का?"
+      - id: thank_you
+        en: "Thank you. Have a good day!"
+        hi: "धन्यवाद। आपका दिन शुभ हो!"
+        mr: "धन्यवाद. तुमचा दिवस चांगला जावो!"
+
+  - name: { en: "Documents", hi: "दस्तावेज़", mr: "कागदपत्रे" }
+    phrases:
+      - id: show_aadhaar
+        en: "Please show your Aadhaar card."
+        hi: "कृपया अपना आधार कार्ड दिखाइए।"
+        mr: "कृपया तुमचे आधार कार्ड दाखवा."
+      - id: show_pan
+        en: "Please show your PAN card."
+        hi: "कृपया अपना पैन कार्ड दिखाइए।"
+        mr: "कृपया तुमचे पॅन कार्ड दाखवा."
+      - id: need_photos
+        en: "Two passport size photos are needed."
+        hi: "दो पासपोर्ट साइज़ फोटो चाहिए।"
+        mr: "दोन पासपोर्ट साईज फोटो लागतील."
+      - id: give_passbook
+        en: "Please give me your passbook."
+        hi: "कृपया अपनी पासबुक दीजिए।"
+        mr: "कृपया तुमचे पासबुक द्या."
+      - id: bring_photocopy
+        en: "Please bring a photocopy of this."
+        hi: "कृपया इसकी फोटोकॉपी लाइए।"
+        mr: "कृपया याची झेरॉक्स आणा."
+
+  - name: { en: "Forms & Signature", hi: "फॉर्म और हस्ताक्षर", mr: "फॉर्म आणि सही" }
+    phrases:
+      - id: fill_form
+        en: "Please fill this form."
+        hi: "कृपया यह फॉर्म भरिए।"
+        mr: "कृपया हा फॉर्म भरा."
+      - id: sign_here
+        en: "Please sign here."
+        hi: "कृपया यहाँ हस्ताक्षर कीजिए।"
+        mr: "कृपया येथे सही करा."
+      - id: thumb_impression
+        en: "Please put your thumb impression here."
+        hi: "कृपया यहाँ अंगूठे का निशान लगाइए।"
+        mr: "कृपया येथे अंगठ्याचा ठसा द्या."
+      - id: write_mobile
+        en: "Please write your mobile number here."
+        hi: "कृपया यहाँ अपना मोबाइल नंबर लिखिए।"
+        mr: "कृपया येथे तुमचा मोबाईल नंबर लिहा."
+
+  - name: { en: "Money & Account", hi: "पैसे और खाता", mr: "पैसे आणि खाते" }
+    phrases:
+      - id: enter_pin
+        en: "Please enter your PIN. Do not share it with anyone."
+        hi: "कृपया अपना पिन डालिए। इसे किसी को न बताइए।"
+        mr: "कृपया तुमचा पिन टाका. तो कोणालाही सांगू नका."
+      - id: count_money
+        en: "Please count the money before leaving."
+        hi: "कृपया जाने से पहले पैसे गिन लीजिए।"
+        mr: "कृपया जाण्यापूर्वी पैसे मोजून घ्या."
+      - id: work_done
+        en: "Your work is completed."
+        hi: "आपका काम हो गया है।"
+        mr: "तुमचे काम झाले आहे."
+      - id: come_tomorrow
+        en: "Please come tomorrow morning."
+        hi: "कृपया कल सुबह आइए।"
+        mr: "कृपया उद्या सकाळी या."
+
+  - name: { en: "Understanding", hi: "समझ", mr: "समज" }
+    phrases:
+      - id: understood
+        en: "Did you understand?"
+        hi: "क्या आप समझ गए?"
+        mr: "तुम्हाला समजले का?"
+      - id: will_repeat
+        en: "I will repeat it."
+        hi: "मैं दोहराता हूँ।"
+        mr: "मी पुन्हा सांगतो."
+      - id: speak_slowly
+        en: "Please speak slowly."
+        hi: "कृपया धीरे बोलिए।"
+        mr: "कृपया हळू बोला."

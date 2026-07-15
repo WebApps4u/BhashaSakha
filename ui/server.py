@@ -56,6 +56,62 @@ PIPER_BIN = str(ROOT / ".venv/bin/piper")
 NLLB = {"en": "eng_Latn", "hi": "hin_Deva", "mr": "mar_Deva"}
 LANG_NAMES = {"en": "English", "hi": "Hindi", "mr": "Marathi"}
 
+# ─── Phrasebook — one-tap counter phrases, pre-synthesized ──
+
+PHRASE_TTS_DIR = ROOT / "data/phrase_tts"
+_phrasebook = {"categories": []}
+_phrases_by_id = {}
+
+
+def load_phrasebook():
+    global _phrasebook, _phrases_by_id
+    import yaml
+    path = ROOT / "config/phrasebook.yaml"
+    if not path.exists():
+        log.warning("No phrasebook.yaml found")
+        return
+    with open(path, encoding="utf-8") as f:
+        _phrasebook = yaml.safe_load(f) or {"categories": []}
+    _phrases_by_id = {
+        p["id"]: p
+        for cat in _phrasebook.get("categories", [])
+        for p in cat.get("phrases", [])
+    }
+    log.info(f"Phrasebook: {len(_phrases_by_id)} phrases")
+
+
+def phrase_tts(pid: str, lang: str) -> str:
+    """Return base64 WAV for a phrase — disk-cached, synth on first use."""
+    phrase = _phrases_by_id.get(pid)
+    if not phrase or lang not in phrase:
+        return None
+    text = phrase[lang]
+    # Cache key includes text hash so edited phrases regenerate
+    import hashlib
+    h = hashlib.sha1(text.encode()).hexdigest()[:10]
+    cache = PHRASE_TTS_DIR / lang / f"{pid}-{h}.wav"
+    if cache.exists():
+        return base64.b64encode(cache.read_bytes()).decode()
+    b64 = gen_tts(text, lang)
+    if b64:
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        cache.write_bytes(base64.b64decode(b64))
+    return b64
+
+
+def _presynth_phrases():
+    """Background: pre-generate all phrase audio so taps are instant."""
+    t0 = time.monotonic()
+    n = 0
+    for pid in _phrases_by_id:
+        for lang in ("en", "hi", "mr"):
+            try:
+                if phrase_tts(pid, lang):
+                    n += 1
+            except Exception as e:
+                log.warning(f"Phrase TTS failed {pid}/{lang}: {e}")
+    log.info(f"Phrasebook audio ready: {n} clips ({time.monotonic()-t0:.0f}s)")
+
 
 # ─── Engine Loading ───────────────────────────────────────
 
@@ -144,10 +200,17 @@ def load_engines():
         "mr_tts_tokenizer": mr_tts_tokenizer,
         "mr_tts_sr": mr_tts_sr,
     }
+    load_phrasebook()
+
     _ready = True
     _loading = False
     gc.collect()
     log.info("All engines ready!")
+
+    # Pre-synthesize phrasebook audio in the background (disk-cached)
+    import threading
+    threading.Thread(target=_presynth_phrases, daemon=True).start()
+
     return _engines
 
 
@@ -431,6 +494,11 @@ async def api_status():
     return {"ready": _ready}
 
 
+@app.get("/api/phrases")
+async def api_phrases():
+    return _phrasebook
+
+
 @app.get("/api/system")
 async def api_system():
     import psutil
@@ -549,6 +617,29 @@ async def ws_endpoint(websocket: WebSocket):
                         session_meta["gender"] = data.get("gender")
                         if data.get("age"):
                             session_meta["age"] = int(data["age"])
+                    elif data.get("type") == "phrase":
+                        # One-tap phrasebook: no STT, no translation, no
+                        # TTS wait — everything pre-made
+                        pid = data.get("id")
+                        src = data.get("src", "en")
+                        tgt = data.get("tgt", "mr")
+                        phrase = _phrases_by_id.get(pid)
+                        if not phrase or src not in NLLB or tgt not in NLLB:
+                            continue
+                        t0 = time.monotonic()
+                        tts_b64 = await loop.run_in_executor(
+                            _executor, phrase_tts, pid, tgt)
+                        await websocket.send_json({
+                            "type": "result",
+                            "src_text": phrase.get(src, ""),
+                            "src_lang": src,
+                            "tgt_text": phrase.get(tgt, ""),
+                            "tgt_lang": tgt,
+                            "tts": tts_b64,
+                            "stt_ms": 0, "trans_ms": 0,
+                            "tts_ms": round((time.monotonic()-t0)*1000),
+                            "total_ms": round((time.monotonic()-t0)*1000),
+                        })
                     elif data.get("type") == "text":
                         # Typed-text translation (no STT stage)
                         text = (data.get("text") or "").strip()

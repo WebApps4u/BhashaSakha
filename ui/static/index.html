@@ -7,7 +7,7 @@
     <title>BhashaSakha — Voice Translator</title>
     <!-- Fonts bundled locally — kiosk runs fully offline -->
     <link href="/static/fonts/fonts.css?v=7" rel="stylesheet">
-    <link rel="stylesheet" href="/static/style.css?v=7">
+    <link rel="stylesheet" href="/static/style.css?v=8">
 </head>
 <body>
 
@@ -64,9 +64,10 @@
                     <span id="mood-emoji"></span> <span id="mood-text"></span>
                 </div>
 
-                <!-- Language selectors -->
+                <!-- Language selectors: staff side / customer side -->
                 <div class="tb-lang">
-                    <select id="sel-src" class="tb-sel" onchange="onLangChange()" aria-label="Source language">
+                    <span class="tb-role">Staff</span>
+                    <select id="sel-src" class="tb-sel" onchange="onLangChange()" aria-label="Staff language">
                         <option value="en">English</option>
                         <option value="hi">हिन्दी</option>
                         <option value="mr">मराठी</option>
@@ -76,7 +77,8 @@
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4"/></svg>
                     </button>
 
-                    <select id="sel-tgt" class="tb-sel" onchange="onLangChange()" aria-label="Target language">
+                    <span class="tb-role">Customer</span>
+                    <select id="sel-tgt" class="tb-sel" onchange="onLangChange()" aria-label="Customer language">
                         <option value="en">English</option>
                         <option value="hi" selected>हिन्दी</option>
                         <option value="mr">मराठी</option>
@@ -122,20 +124,57 @@
                         <span class="ib-dot" id="ib-dot"></span>
                         <span class="ib-text" id="ib-text">Ready</span>
                     </div>
-                    <button class="mic" id="mic"
-                        onmousedown="startRec()" onmouseup="stopRec()"
-                        ontouchstart="startRec()" ontouchend="stopRec()"
-                        oncontextmenu="return false"
-                        aria-label="Hold to record">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-                            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                            <line x1="12" y1="19" x2="12" y2="23"/>
-                        </svg>
-                        <div class="mic-ring"></div>
+
+                    <button class="ib-phrases" id="btn-phrases" onclick="togglePhrases()" aria-label="Quick phrases">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                        <span>Phrases</span>
                     </button>
+
+                    <div class="mic-group">
+                        <button class="mic" id="mic"
+                            onmousedown="startRec(event,'staff')" onmouseup="stopRec(event)"
+                            ontouchstart="startRec(event,'staff')" ontouchend="stopRec(event)"
+                            oncontextmenu="return false"
+                            aria-label="Staff: hold to speak">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                                <line x1="12" y1="19" x2="12" y2="23"/>
+                            </svg>
+                            <div class="mic-ring"></div>
+                        </button>
+                        <span class="mic-label">Staff</span>
+                    </div>
+
+                    <div class="mic-group">
+                        <button class="mic cust" id="mic-cust"
+                            onmousedown="startRec(event,'cust')" onmouseup="stopRec(event)"
+                            ontouchstart="startRec(event,'cust')" ontouchend="stopRec(event)"
+                            oncontextmenu="return false"
+                            aria-label="Customer: hold to speak">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                                <line x1="12" y1="19" x2="12" y2="23"/>
+                            </svg>
+                            <div class="mic-ring"></div>
+                        </button>
+                        <span class="mic-label">Customer / ग्राहक</span>
+                    </div>
                 </div>
             </footer>
+
+            <!-- Quick phrases bottom sheet -->
+            <div class="ph-shade" id="ph-shade" onclick="togglePhrases()"></div>
+            <div class="ph-sheet" id="ph-sheet">
+                <div class="ph-head">
+                    <h3>Quick Phrases</h3>
+                    <button class="sm-close" onclick="togglePhrases()" aria-label="Close phrases">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                    </button>
+                </div>
+                <div class="ph-body" id="ph-body"><p class="sb-empty">Loading…</p></div>
+            </div>
         </div>
 
         <!-- Settings Modal -->
@@ -211,6 +250,6 @@
     </div>
 
     <script src="/static/face-api.min.js"></script>
-    <script src="/static/app.js?v=7"></script>
+    <script src="/static/app.js?v=8"></script>
 </body>
 </html>
