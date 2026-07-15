@@ -856,6 +856,42 @@ button {
 .ib-send:hover { background: var(--acc2); }
 .ib-send:active { transform: scale(0.94); }
 
+/* Next customer button */
+.tb-next {
+    display: flex; align-items: center; gap: 6px;
+    padding: 7px 12px;
+    border: 1px solid var(--grn);
+    border-radius: var(--rf);
+    background: var(--grn-bg);
+    color: var(--grn2);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color 0.2s var(--ease), color 0.2s var(--ease);
+}
+.tb-next:hover { background: var(--grn); color: #fff; }
+.tb-next:active { transform: scale(0.96); }
+
+/* Number guard */
+mark.num {
+    background: var(--acc-bg);
+    color: var(--acc2);
+    font-weight: 600;
+    padding: 0 3px;
+    border-radius: 4px;
+}
+.tc-warn {
+    margin: 10px 16px 4px;
+    padding: 8px 12px;
+    border: 1px solid rgba(220, 38, 38, 0.3);
+    border-radius: var(--r);
+    background: var(--red-bg);
+    color: var(--red);
+    font-size: 12px;
+    line-height: 1.4;
+}
+
 /* Role label above language selectors */
 .tb-role {
     font-size: 9px;

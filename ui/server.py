@@ -56,6 +56,43 @@ PIPER_BIN = str(ROOT / ".venv/bin/piper")
 NLLB = {"en": "eng_Latn", "hi": "hin_Deva", "mr": "mar_Deva"}
 LANG_NAMES = {"en": "English", "hi": "Hindi", "mr": "Marathi"}
 
+# ─── Number guard — amounts must survive translation ───────
+
+_DIGIT_MAP = str.maketrans("०१२३४५६७८९", "0123456789")
+
+
+def extract_numbers(text: str) -> list:
+    """All numeric tokens in a text, normalized for comparison.
+
+    Devanagari digits are mapped to ASCII and thousand separators
+    stripped, so "₹ ५०,०००" and "50000" compare equal. Leading zeros
+    are kept — account numbers must match exactly.
+    """
+    import re as _re
+    out = []
+    for m in _re.finditer(r"\d[\d,.]*", text.translate(_DIGIT_MAP)):
+        s = m.group().replace(",", "").rstrip(".")
+        if s:
+            out.append(s)
+    return out
+
+
+def check_numbers(src_text: str, tgt_text: str) -> dict:
+    """Compare numeric tokens between source and translation.
+
+    Returns None when neither side contains numbers (nothing to guard).
+    """
+    src_nums = extract_numbers(src_text)
+    tgt_nums = extract_numbers(tgt_text)
+    if not src_nums and not tgt_nums:
+        return None
+    return {
+        "src": src_nums,
+        "tgt": tgt_nums,
+        "ok": sorted(src_nums) == sorted(tgt_nums),
+    }
+
+
 # ─── Phrasebook — one-tap counter phrases, pre-synthesized ──
 
 PHRASE_TTS_DIR = ROOT / "data/phrase_tts"
@@ -571,6 +608,10 @@ async def run_translate_tts(websocket, text, src, tgt, g, a, start, stt_ms):
     total = round((time.monotonic() - start) * 1000)
     log.info(f"  TOTAL: {total}ms")
 
+    numbers = check_numbers(text, translated)
+    if numbers and not numbers["ok"]:
+        log.warning(f"  NUMBER MISMATCH: {numbers['src']} -> {numbers['tgt']}")
+
     await websocket.send_json({
         "type": "result",
         "src_text": text,
@@ -581,6 +622,7 @@ async def run_translate_tts(websocket, text, src, tgt, g, a, start, stt_ms):
         "trans_ms": trans_ms,
         "tts_ms": tts_ms_total,
         "total_ms": total,
+        "numbers": numbers,
     })
 
     # Periodic cleanup — per-request gc.collect() adds latency

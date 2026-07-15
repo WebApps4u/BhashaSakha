@@ -119,6 +119,7 @@ function playNextPendingChunk(p) {
     if (p.playing || p.playIdx >= p.urls.length) return;
     p.playing = true;
     const a = new Audio(p.urls[p.playIdx++]);
+    trackAudio(a);
     a.onended = () => { p.playing = false; playNextPendingChunk(p); };
     a.onerror = () => { p.playing = false; };
     a.play().catch(() => { p.playing = false; });
@@ -373,7 +374,7 @@ function showResult(d) {
                         <span>Play</span>
                     </button>` : ''}
                 </div>
-                <p class="tc-text-src">${esc(d.src_text)}</p>
+                <p class="tc-text-src">${hlNums(esc(d.src_text))}</p>
             </div>
 
             <div class="tc-divider"></div>
@@ -386,8 +387,12 @@ function showResult(d) {
                         <span>Play</span>
                     </button>` : ''}
                 </div>
-                <p class="tc-text-tgt ${isLat ? 'latin' : ''}">${esc(d.tgt_text)}</p>
+                <p class="tc-text-tgt ${isLat ? 'latin' : ''}">${hlNums(esc(d.tgt_text))}</p>
             </div>
+            ${d.numbers && !d.numbers.ok ? `
+            <div class="tc-warn">
+                ⚠️ Numbers may not match: <b>${esc(d.numbers.src.join(', ') || '—')}</b> → <b>${esc(d.numbers.tgt.join(', ') || '—')}</b> — please verify before proceeding
+            </div>` : ''}
         </div>
 
         <div class="tc-footer">
@@ -429,6 +434,7 @@ function playAudio(key, btn, label) {
     const playNext = () => {
         if (i >= urls.length) { reset(); return; }
         const a = new Audio(urls[i++]);
+        trackAudio(a);
         a.onended = playNext;
         a.onerror = reset;
         a.play().catch(reset);
@@ -509,12 +515,12 @@ function openConv(id) {
             <div class="tc-body">
                 <div class="tc-section tc-original">
                     <div class="tc-sec-head"><span class="tc-sec-label">Original</span></div>
-                    <p class="tc-text-src">${esc(m.st)}</p>
+                    <p class="tc-text-src">${hlNums(esc(m.st))}</p>
                 </div>
                 <div class="tc-divider"></div>
                 <div class="tc-section tc-translated">
                     <div class="tc-sec-head"><span class="tc-sec-label">Translation</span></div>
-                    <p class="tc-text-tgt ${isLat ? 'latin' : ''}">${esc(m.tt)}</p>
+                    <p class="tc-text-tgt ${isLat ? 'latin' : ''}">${hlNums(esc(m.tt))}</p>
                 </div>
             </div>
             <div class="tc-footer"><span class="tc-metric">${secs}s</span></div>`;
@@ -803,3 +809,35 @@ function toggleMute() {
 
 function esc(t) { const e = document.createElement('span'); e.textContent = t; return e.innerHTML; }
 function _(id) { return document.getElementById(id); }
+
+// Highlight numbers (Western + Devanagari digits) — call on escaped text
+function hlNums(escaped) {
+    return escaped.replace(/[0-9०-९][0-9०-९,.]*/g, m => `<mark class="num">${m}</mark>`);
+}
+
+// ═══ NEXT CUSTOMER — privacy wipe between customers ═══
+const activeAudios = [];
+function trackAudio(a) {
+    activeAudios.push(a);
+    if (activeAudios.length > 8) activeAudios.shift();
+}
+function stopAllAudio() {
+    activeAudios.forEach(a => { try { a.pause(); } catch {} });
+    activeAudios.length = 0;
+}
+
+function nextCustomer() {
+    stopAllAudio();
+    clearProcessing();
+    pendingTts = null;
+    // Delete this customer's conversation record entirely — nothing
+    // from their session stays on the device
+    if (currentConvId) {
+        conversations = conversations.filter(c => c.id !== currentConvId);
+    }
+    currentConvId = null;
+    saveConvs();
+    _('chat').innerHTML = welcomeHTML();
+    renderSB();
+    setStatus('', 'Ready for next customer');
+}
