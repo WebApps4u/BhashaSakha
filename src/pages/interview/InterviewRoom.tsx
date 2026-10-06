@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Keyboard, Loader2, Mic, MicOff, PhoneOff, RotateCcw, Video, VideoOff, Volume2, VolumeX } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
+import { supabase } from '@/lib/supabaseClient'
 import { cn } from '@/lib/utils'
 import { interviewApi, InterviewApiError } from '@/lib/interview/api'
 import { PERSONA_ACCENT, formatClock, initials, labelOf, MODE_OPTIONS, TYPE_OPTIONS } from '@/lib/interview/options'
@@ -22,6 +23,7 @@ type AnswerPayload = {
 }
 
 type TurnResponse = { candidate_turn: Turn; interviewer_turn: Turn; is_final: boolean }
+type SubmitReason = 'manual' | 'silence' | 'interrupt'
 
 // Short acknowledgements cover the moment the panel "thinks" about the next question.
 // Every third answer gets none, so it doesn't feel scripted.
@@ -54,7 +56,7 @@ export default function InterviewRoom() {
   const micMutedRef = useRef(false)
   const finalRef = useRef(false)
   const pendingRef = useRef<AnswerPayload | null>(null)
-  const submitVoiceRef = useRef<(interrupted: boolean) => void>(() => undefined)
+  const submitVoiceRef = useRef<(reason: SubmitReason) => void>(() => undefined)
 
   // Read through a function: the ref changes across awaits, which TypeScript's narrowing can't see.
   const phaseNow = () => phaseRef.current
@@ -67,13 +69,18 @@ export default function InterviewRoom() {
     setTypingState(v)
   }
 
-  const voice = useInterviewVoice()
+  const track = useRoomEvents(sessionId, () => phaseRef.current)
+  const voice = useInterviewVoice({ onEvent: track })
   const camera = useCamera()
   const capture = useAnswerCapture({
     autoDetect: true,
     interruptAfterMs: session?.config.mode === 'stress' ? STRESS_INTERRUPT_MS : null,
-    onAutoSubmit: (reason) => submitVoiceRef.current(reason === 'interrupt'),
+    onAutoSubmit: (reason) => submitVoiceRef.current(reason),
   })
+
+  useEffect(() => {
+    if (capture.error) track('mic_error', capture.error)
+  }, [capture.error, track])
 
   const panel = useMemo(() => session?.panel ?? [], [session])
   const personaFor = useCallback((id: string | null) => panel.find((p) => p.id === id) ?? panel[0], [panel])
@@ -105,6 +112,7 @@ export default function InterviewRoom() {
         finalRef.current = r.session.is_final
         setTyping(!capture.isSupported)
         setPhase('lobby')
+        track('room_loaded', `status=${r.session.status} voice_supported=${capture.isSupported} turns=${r.turns.length}`)
       })
       .catch((e) => {
         if (!alive) return
@@ -146,6 +154,7 @@ export default function InterviewRoom() {
 
   // ------------------------------------------------------------------ flow
   const endInterview = useCallback(async () => {
+    track('end', `phase=${phaseRef.current} answers=${turnsRef.current.filter((t) => t.speaker === 'candidate').length}`)
     setConfirmEnd(false)
     setPhase('ending')
     voice.stop()
@@ -156,7 +165,7 @@ export default function InterviewRoom() {
       // the report page retries ending if needed
     }
     navigate(`/interview/${sessionId}/report`)
-  }, [capture, navigate, sessionId, voice])
+  }, [capture, navigate, sessionId, track, voice])
 
   const beginAnswer = useCallback(async () => {
     setPhase('listening')
@@ -168,13 +177,17 @@ export default function InterviewRoom() {
     const ack = ackFor(current.filter((t) => t.speaker === 'candidate').length)
     const lastAsker = [...current].reverse().find((t) => t.speaker === 'interviewer')
     if (ack && lastAsker && !voice.muted) void voice.prefetch(ack, personaFor(lastAsker.persona_id))
+    track('listen_start', `mode=${typingRef.current ? 'text' : 'voice'} mic_muted=${micMutedRef.current}`)
     await capture.begin({ listen: !typingRef.current && !micMutedRef.current })
-  }, [capture, personaFor, voice])
+  }, [capture, personaFor, track, voice])
 
   const askTurn = useCallback(
     async (turn: Turn) => {
       setPhase('speaking')
+      const startedSpeaking = performance.now()
+      track('question_start', `seq=${turn.seq} persona=${turn.persona_id} words=${turn.text.split(/\s+/).length} speaker_muted=${voice.muted}`)
       await voice.speak(turn.text, personaFor(turn.persona_id))
+      track('question_end', `seq=${turn.seq} ms=${Math.round(performance.now() - startedSpeaking)} phase=${phaseRef.current}`)
       if (phaseRef.current !== 'speaking') return
       if (finalRef.current) {
         await endInterview()
@@ -182,12 +195,14 @@ export default function InterviewRoom() {
       }
       await beginAnswer()
     },
-    [beginAnswer, endInterview, personaFor, voice],
+    [beginAnswer, endInterview, personaFor, track, voice],
   )
 
   const send = useCallback(
     async (payload: AnswerPayload) => {
       pendingRef.current = payload
+      const sentAt = performance.now()
+      track('answer_sent', `mode=${payload.input_mode} words=${payload.text ? payload.text.split(/\s+/).length : 0} interrupted=${!!payload.interrupted}`)
       setPhase('thinking')
       setError(null)
       setSubmitted(payload.text || null)
@@ -199,6 +214,7 @@ export default function InterviewRoom() {
       try {
         const [r] = await Promise.all([interviewApi<TurnResponse>(`/sessions/${sessionId}/turns`, { body: payload }), ack])
         pendingRef.current = null
+        track('turn_ok', `ms=${Math.round(performance.now() - sentAt)} final=${r.is_final} action=${r.interviewer_turn.action}`)
         finalRef.current = r.is_final
         setTurns((prev) => {
           const rest = prev.filter((t) => t.seq !== r.candidate_turn.seq && t.seq !== r.interviewer_turn.seq)
@@ -207,6 +223,7 @@ export default function InterviewRoom() {
         await askTurn(r.interviewer_turn)
       } catch (e) {
         const err = e as InterviewApiError
+        track('turn_error', `status=${err.status} ${err.code ?? ''} ${err.message ?? ''}`)
         if (err.status === 409 && /not live|ended/i.test(err.message)) {
           await endInterview()
           return
@@ -215,23 +232,24 @@ export default function InterviewRoom() {
         setPhase(err.status === 429 || err.status === 403 ? 'blocked' : 'retry')
       }
     },
-    [askTurn, endInterview, lastInterviewerTurn, panel, personaFor, sessionId, turns, voice],
+    [askTurn, endInterview, lastInterviewerTurn, panel, personaFor, sessionId, track, turns, voice],
   )
 
   const submitVoice = useCallback(
-    async (interrupted: boolean) => {
+    async (reason: SubmitReason) => {
       if (phaseRef.current !== 'listening' || typingRef.current) return
-      const answer = await capture.finish(interrupted)
+      const answer = await capture.finish(reason === 'interrupt')
       if (!answer.text) {
+        track('answer_empty', `reason=${reason} stt_status=${capture.status}`)
         setNotice("We didn't catch that. Try again, check your mic, or type your answer.")
         await beginAnswer()
         return
       }
       await send({ ...answer, input_mode: 'voice' })
     },
-    [beginAnswer, capture, send],
+    [beginAnswer, capture, send, track],
   )
-  submitVoiceRef.current = (interrupted) => void submitVoice(interrupted)
+  submitVoiceRef.current = (reason) => void submitVoice(reason)
 
   const submitText = useCallback(async () => {
     const text = draft.trim()
@@ -242,6 +260,7 @@ export default function InterviewRoom() {
 
   const join = async () => {
     voice.unlock() // must run inside the click so audio playback is allowed later
+    track('join_clicked')
     setPhase('joining')
     setError(null)
     try {
@@ -249,6 +268,7 @@ export default function InterviewRoom() {
       setSession(r.session)
       setTurns(r.turns)
       finalRef.current = r.session.is_final
+      track('joined', `turns=${r.turns.length}`)
 
       const last = r.turns[r.turns.length - 1]
       if (!last) throw new Error('The interview could not be started.')
@@ -261,6 +281,7 @@ export default function InterviewRoom() {
       await askTurn(last)
     } catch (e) {
       const err = e as InterviewApiError
+      track('join_error', `status=${err.status} ${err.message ?? ''}`)
       setError(err.message ?? 'Could not join the interview')
       setPhase(err.status === 429 || err.status === 403 ? 'blocked' : 'lobby')
     }
@@ -271,11 +292,13 @@ export default function InterviewRoom() {
     const next = !micMutedRef.current
     micMutedRef.current = next
     setMicMutedState(next)
+    track('mic_toggle', `muted=${next}`)
     if (phaseRef.current === 'listening' && !typingRef.current) await capture.setMicMuted(next)
   }
 
   const toggleTyping = async () => {
     const next = !typingRef.current
+    track('typing_toggle', `on=${next}`)
     if (next) {
       const soFar = capture.liveText
       setTyping(true)
@@ -303,7 +326,7 @@ export default function InterviewRoom() {
       const target = e.target as HTMLElement | null
       if (target && (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT' || target.tagName === 'BUTTON')) return
       e.preventDefault()
-      void submitVoice(false)
+      void submitVoice('manual')
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -521,7 +544,7 @@ export default function InterviewRoom() {
             {phase === 'listening' ? (
               <button
                 type="button"
-                onClick={() => (typing ? void submitText() : void submitVoice(false))}
+                onClick={() => (typing ? void submitText() : void submitVoice('manual'))}
                 disabled={typing ? !draft.trim() : false}
                 className="inline-flex h-11 items-center bg-white px-5 text-[11px] font-bold uppercase tracking-[0.15em] text-black transition hover:bg-neutral-200 disabled:opacity-40"
               >
@@ -857,4 +880,61 @@ function useMicCheck() {
 
   useEffect(() => stop, [])
   return { level, active, error, start, stop }
+}
+
+/** Batches room milestones to the server log so production runs can be diagnosed (metadata only). */
+function useRoomEvents(sessionId: string, getPhase: () => string) {
+  const queue = useRef<Array<{ type: string; detail?: string; t: number }>>([])
+  const startedAt = useRef(performance.now())
+  const tokenRef = useRef('')
+  const getPhaseRef = useRef(getPhase)
+  getPhaseRef.current = getPhase
+
+  useEffect(() => {
+    void supabase.auth.getSession().then(({ data }) => {
+      tokenRef.current = data.session?.access_token ?? ''
+    })
+  }, [])
+
+  const flush = useCallback(
+    (keepalive = false) => {
+      if (!queue.current.length || !tokenRef.current || !sessionId) return
+      const events = queue.current.splice(0, 25)
+      void fetch(`/api/interview/sessions/${sessionId}/events`, {
+        method: 'POST',
+        keepalive,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenRef.current}` },
+        body: JSON.stringify({ events }),
+      }).catch(() => undefined)
+    },
+    [sessionId],
+  )
+
+  const track = useCallback(
+    (type: string, detail?: string) => {
+      queue.current.push({ type, detail, t: performance.now() - startedAt.current })
+      if (queue.current.length >= 20) flush()
+    },
+    [flush],
+  )
+
+  useEffect(() => {
+    const id = window.setInterval(() => flush(), 4000)
+    const onHide = () => {
+      if (document.visibilityState !== 'hidden') return
+      queue.current.push({ type: 'page_hidden', detail: `phase=${getPhaseRef.current()}`, t: performance.now() - startedAt.current })
+      flush(true)
+    }
+    const onPageHide = () => flush(true)
+    document.addEventListener('visibilitychange', onHide)
+    window.addEventListener('pagehide', onPageHide)
+    return () => {
+      window.clearInterval(id)
+      document.removeEventListener('visibilitychange', onHide)
+      window.removeEventListener('pagehide', onPageHide)
+      flush(true)
+    }
+  }, [flush])
+
+  return track
 }

@@ -330,7 +330,7 @@ router.post('/profiles/analyze', async (req: Request, res: Response): Promise<vo
       success: true,
       profile,
       recommended_config: recommended,
-      panel: buildPanel(recommended, (profile as any).id),
+      panel: buildPanel(recommended, (profile as any).id, analysis.candidate?.name),
       round_plan: buildRoundPlan(recommended),
     })
   } catch (err) {
@@ -350,7 +350,7 @@ router.get('/profiles/:id', async (req: Request, res: Response): Promise<void> =
       success: true,
       profile: { id: profile.id, target_title: profile.target_title, company_name: profile.company_name, analysis_json: profile.analysis_json, created_at: profile.created_at },
       recommended_config: recommended,
-      panel: buildPanel(recommended, profile.id),
+      panel: buildPanel(recommended, profile.id, profile.analysis_json?.candidate?.name),
       round_plan: buildRoundPlan(recommended),
     })
   } catch (err) {
@@ -364,8 +364,10 @@ router.post('/preview', async (req: Request, res: Response): Promise<void> => {
     const v = await verifyUser(req)
     if (!v.ok) return jsonError(res, v.status, v.error)
     const config = normalizeConfig(req.body?.config)
-    const seed = cleanText(req.body?.profile_id, 64) || v.userId
-    res.status(200).json({ success: true, config, panel: buildPanel(config, seed), round_plan: buildRoundPlan(config) })
+    const profileId = cleanText(req.body?.profile_id, 64)
+    const profile = profileId ? await loadProfile(adminClient(), profileId, v.userId) : null
+    const seed = profile?.id ?? v.userId
+    res.status(200).json({ success: true, config, panel: buildPanel(config, seed, profile?.analysis_json?.candidate?.name), round_plan: buildRoundPlan(config) })
   } catch (err) {
     jsonError(res, 500, err instanceof Error ? err.message : 'Server error')
   }
@@ -427,7 +429,7 @@ router.post('/sessions', async (req: Request, res: Response): Promise<void> => {
 
     const recommended = normalizeConfig(profile.analysis_json?.recommended_config)
     const config = normalizeConfig(req.body?.config, recommended)
-    const panel = buildPanel(config, profile.id)
+    const panel = buildPanel(config, profile.id, profile.analysis_json?.candidate?.name)
     const roundPlan = buildRoundPlan(config)
     const parentId = cleanText(req.body?.parent_session_id, 64) || null
 
@@ -795,6 +797,25 @@ router.post('/sessions/:id/turns', async (req: Request, res: Response): Promise<
     )
   } catch (err) {
     jsonError(res, 500, err instanceof Error ? err.message : 'Server error')
+  }
+})
+
+/** Room diagnostics: metadata-only milestones from the browser, written to the server log (never answer text). */
+router.post('/sessions/:id/events', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const v = await verifyUser(req)
+    if (!v.ok) return jsonError(res, v.status, v.error)
+    const sessionRef = cleanText(req.params.id, 64).slice(0, 8)
+    for (const e of asArray(req.body?.events).slice(0, 25)) {
+      const type = cleanText((e as any)?.type, 40).replace(/[^a-z0-9_:.-]/gi, '')
+      if (!type) continue
+      const detail = cleanText((e as any)?.detail, 160).replace(/[\r\n]+/g, ' ')
+      const at = Math.max(0, Math.round((Number((e as any)?.t) || 0) / 1000))
+      console.log(`[interview-room] session=${sessionRef} user=${v.userId.slice(0, 8)} +${at}s ${type}${detail ? ` ${detail}` : ''}`)
+    }
+    res.status(204).end()
+  } catch {
+    res.status(204).end()
   }
 })
 

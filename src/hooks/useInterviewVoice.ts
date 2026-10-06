@@ -12,7 +12,9 @@ const readingMs = (text: string) => Math.min(12_000, 900 + text.split(/\s+/).len
  * Plays interviewer lines in each panelist's own voice and resolves when the line has finished.
  * Server TTS (per-panelist Gemini voice) first; the browser's speech synthesis as fallback.
  */
-export function useInterviewVoice() {
+export function useInterviewVoice({ onEvent }: { onEvent?: (type: string, detail?: string) => void } = {}) {
+  const onEventRef = useRef(onEvent)
+  onEventRef.current = onEvent
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const cacheRef = useRef(new Map<string, Promise<string | null>>())
   const cancelRef = useRef<(() => void) | null>(null)
@@ -52,9 +54,13 @@ export function useInterviewVoice() {
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ text, lang: 'en-IN', voice: panelist.voice, gender: panelist.gender === 'female' ? 'FEMALE' : 'MALE' }),
         })
-        if (!resp.ok) return null
+        if (!resp.ok) {
+          onEventRef.current?.('tts_error', `status=${resp.status} chars=${text.length}`)
+          return null
+        }
         return URL.createObjectURL(await resp.blob())
-      } catch {
+      } catch (err) {
+        onEventRef.current?.('tts_error', err instanceof Error ? err.message : 'network')
         return null
       }
     })()
@@ -141,6 +147,7 @@ export function useInterviewVoice() {
             finish()
             return
           }
+          onEventRef.current?.('voice_fallback_browser', `persona=${panelist.id}`)
           setPreparingId(null)
           setSpeakingId(panelist.id)
           stopBrowser = speakWithBrowser(text, panelist, finish)
@@ -160,6 +167,7 @@ export function useInterviewVoice() {
           a.onplaying = () => {
             setPreparingId(null)
             setSpeakingId(panelist.id)
+            if (!clipOnly) onEventRef.current?.('voice_playing', `persona=${panelist.id}`)
           }
           a.src = url
           a.currentTime = 0

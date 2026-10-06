@@ -193,14 +193,17 @@ export const selectPanelKinds = (config) => {
         kinds.push('domain');
     return Array.from(new Set(kinds)).slice(0, 4);
 };
-export const buildPanel = (config, seed) => {
+/** candidateName: panelists never share the candidate's first name ("Hello Priya, I'm Priya…"). */
+export const buildPanel = (config, seed, candidateName) => {
     const h = hashSeed(seed);
     const usedVoices = new Set();
     const usedNames = new Set();
+    const candidateFirst = (candidateName ?? '').trim().split(/\s+/)[0]?.toLowerCase() ?? '';
+    const unavailable = (name) => usedNames.has(name) || (!!candidateFirst && name.split(' ')[0].toLowerCase() === candidateFirst);
     return selectPanelKinds(config).map((kind, idx) => {
         const pool = NAME_POOL[kind];
         let person = pool[(h + idx * 7) % pool.length];
-        for (let i = 0; usedNames.has(person.name) && i < pool.length; i++)
+        for (let i = 0; unavailable(person.name) && i < pool.length; i++)
             person = pool[(h + idx * 7 + i + 1) % pool.length];
         usedNames.add(person.name);
         const voicePool = VOICES[person.gender];
