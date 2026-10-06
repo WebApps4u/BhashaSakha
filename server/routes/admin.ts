@@ -1,6 +1,8 @@
 import { Router, type Request, type Response } from 'express'
 import { createClient } from '@supabase/supabase-js'
 import { encryptSecret } from '../lib/cryptoVault.js'
+import { listProviderModels, probeProviderModel } from '../lib/aiModelLayer.js'
+import { getAiOverview, getUsageOverview, monthKeyUtc as aiMonthKey, resetUserUsage, saveModelRoute, testModelRoute } from '../lib/adminAiConsole.js'
 
 const router = Router()
 
@@ -1408,6 +1410,94 @@ router.get('/subscriptions/audit', async (req: Request, res: Response): Promise<
       return
     }
     res.status(200).json({ success: true, logs: data ?? [] })
+  } catch (err) {
+    jsonError(res, 500, err instanceof Error ? err.message : 'Server error')
+  }
+})
+
+// ---------------------------------------------------------------------------
+// AI console: overview, provider/model tests, routes and usage (used by the admin AI + Usage pages)
+// ---------------------------------------------------------------------------
+
+router.get('/ai/overview', async (req: Request, res: Response) => {
+  try {
+    const a = await requireAdmin(req, res)
+    if (!a.ok) return
+    res.status(200).json({ success: true, ...(await getAiOverview(adminClient() as any)) })
+  } catch (err) {
+    jsonError(res, 500, err instanceof Error ? err.message : 'Server error')
+  }
+})
+
+router.get('/ai/providers/:id/models', async (req: Request, res: Response) => {
+  try {
+    const a = await requireAdmin(req, res)
+    if (!a.ok) return
+    res.status(200).json({ success: true, ...(await listProviderModels({ supabase: adminClient() as any, providerId: String(req.params.id) })) })
+  } catch (err) {
+    jsonError(res, 500, err instanceof Error ? err.message : 'Server error')
+  }
+})
+
+router.post('/ai/providers/:id/test', async (req: Request, res: Response) => {
+  try {
+    const a = await requireAdmin(req, res)
+    if (!a.ok) return
+    const model = typeof req.body?.model === 'string' ? req.body.model.trim().slice(0, 120) : ''
+    if (!model) return jsonError(res, 400, 'Choose a model to test')
+    const keyId = typeof req.body?.key_id === 'string' ? req.body.key_id : null
+    const result = await probeProviderModel({ supabase: adminClient() as any, providerId: String(req.params.id), modelName: model, keyId })
+    await audit({ actorId: a.userId, token: a.token, action: 'test', entityType: 'ai_provider', entityId: String(req.params.id), meta: { model, ok: result.ok, status: result.status } })
+    res.status(200).json({ success: true, result })
+  } catch (err) {
+    jsonError(res, 500, err instanceof Error ? err.message : 'Server error')
+  }
+})
+
+router.put('/ai/models/:id/route', async (req: Request, res: Response) => {
+  try {
+    const a = await requireAdmin(req, res)
+    if (!a.ok) return
+    const policy = await saveModelRoute(adminClient() as any, String(req.params.id), req.body?.steps)
+    await audit({ actorId: a.userId, token: a.token, action: 'update', entityType: 'ai_model_route', entityId: String(req.params.id), meta: { policy } })
+    res.status(200).json({ success: true })
+  } catch (err) {
+    jsonError(res, 400, err instanceof Error ? err.message : 'Could not save route')
+  }
+})
+
+router.post('/ai/models/:id/test', async (req: Request, res: Response) => {
+  try {
+    const a = await requireAdmin(req, res)
+    if (!a.ok) return
+    res.status(200).json({ success: true, result: await testModelRoute(adminClient() as any, String(req.params.id)) })
+  } catch (err) {
+    jsonError(res, 500, err instanceof Error ? err.message : 'Server error')
+  }
+})
+
+router.get('/ai/usage-overview', async (req: Request, res: Response) => {
+  try {
+    const a = await requireAdmin(req, res)
+    if (!a.ok) return
+    const month = typeof req.query.month === 'string' && /^\d{4}-\d{2}$/.test(req.query.month) ? req.query.month : aiMonthKey()
+    res.status(200).json({ success: true, ...(await getUsageOverview(adminClient() as any, month)) })
+  } catch (err) {
+    jsonError(res, 500, err instanceof Error ? err.message : 'Server error')
+  }
+})
+
+router.post('/ai/usage/reset', async (req: Request, res: Response) => {
+  try {
+    const a = await requireAdmin(req, res)
+    if (!a.ok) return
+    const userId = typeof req.body?.user_id === 'string' ? req.body.user_id : ''
+    const month = typeof req.body?.month === 'string' && /^\d{4}-\d{2}$/.test(req.body.month) ? req.body.month : ''
+    const modelPk = typeof req.body?.model_pk === 'string' ? req.body.model_pk : null
+    if (!userId || !month) return jsonError(res, 400, 'user_id and month are required')
+    await resetUserUsage(adminClient() as any, userId, month, modelPk)
+    await audit({ actorId: a.userId, token: a.token, action: 'reset_usage', entityType: 'ai_usage_month', entityId: userId, meta: { month, model_pk: modelPk } })
+    res.status(200).json({ success: true })
   } catch (err) {
     jsonError(res, 500, err instanceof Error ? err.message : 'Server error')
   }

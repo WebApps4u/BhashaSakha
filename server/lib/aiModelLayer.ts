@@ -665,3 +665,134 @@ export const runModelRequest = async ({
   ;(e as any).details = details
   throw e
 }
+
+// ---------------------------------------------------------------------------
+// Admin diagnostics (never metered against users).
+// Tests call the exact provider + model + key chosen by the admin, without the gateway's
+// silent model substitution, so a misconfigured model name is reported instead of masked.
+// ---------------------------------------------------------------------------
+
+/** fetchWithTimeout that reports network failures/timeouts as status 0 instead of throwing. */
+const safeFetch = async (url: string, init: RequestInit, timeoutMs: number) => {
+  try {
+    return await fetchWithTimeout(url, init, timeoutMs)
+  } catch {
+    return { resp: { ok: false, status: 0 } as Response, text: '' }
+  }
+}
+
+export const hasEnvKeyForAuthType = (authType: string) => !!envKeyForProvider({ auth_type: authType } as Provider)
+
+const defaultBaseUrl = (provider: Provider) =>
+  (provider.base_url || (provider.auth_type === 'google' ? 'https://generativelanguage.googleapis.com' : 'https://api.openai.com/v1')).replace(/\/$/, '')
+
+/** Plain-language explanation of a provider error, for admins. */
+export const describeProviderError = (status: number, raw: string) => {
+  const text = raw.toLowerCase()
+  const retry = raw.match(/retry in ([0-9hms.]+)/i)?.[1]
+  if (status === 0) return 'Could not reach the provider (network error or timeout).'
+  if (status === 401 || text.includes('api key not valid') || text.includes('invalid api key') || text.includes('incorrect api key'))
+    return 'The API key was rejected. Check that it is correct and still active.'
+  if (status === 403)
+    return text.includes('has not been used') || text.includes('disabled')
+      ? 'This API is not enabled for the key’s project. Enable it in the provider console.'
+      : 'Permission denied for this key. Check the key’s project and permissions.'
+  if (status === 404) return 'Model not found for this provider. Pick a model from the provider’s list.'
+  if (status === 429)
+    return `Quota or rate limit reached${text.includes('free_tier') || text.includes('free tier') ? ' (free tier)' : ''}.${retry ? ` Resets in about ${retry.replace(/\.\d+s/, 's')}.` : ''}`
+  if (status >= 500) return 'The provider is temporarily unavailable. Try again shortly.'
+  if (status === 400) return 'The provider rejected the request (bad request). The model may not support text generation.'
+  return `Provider returned HTTP ${status}.`
+}
+
+const resolveProviderApiKey = async (supabase: SupabaseLike, provider: Provider, keyId?: string | null) => {
+  if (keyId) {
+    const { data } = await supabase.from('ai_provider_keys').select('id,label,key_ciphertext,provider_id').eq('id', keyId).maybeSingle()
+    if (!data || (data as any).provider_id !== provider.id) return null
+    return { apiKey: decryptSecret((data as any).key_ciphertext), keyId: (data as any).id as string, source: 'saved key' as const, label: (data as any).label as string }
+  }
+  try {
+    const pkey = await pickProviderKey(supabase, provider.id, provider.key)
+    return { apiKey: decryptSecret(pkey.key_ciphertext), keyId: pkey.id, source: 'saved key' as const, label: pkey.label }
+  } catch {
+    const env = envKeyForProvider(provider)
+    return env ? { apiKey: env, keyId: null, source: 'server environment' as const, label: 'environment' } : null
+  }
+}
+
+const loadProvider = async (supabase: SupabaseLike, providerId: string): Promise<Provider> => {
+  const { data, error } = await supabase.from('ai_providers').select('id,key,name,base_url,auth_type,status').eq('id', providerId).maybeSingle()
+  if (error || !data) throw new Error('Provider not found')
+  return data as Provider
+}
+
+/** Lists the provider's text-generation models using its key (no quota is consumed by listing). */
+export const listProviderModels = async ({ supabase, providerId }: { supabase: SupabaseLike; providerId: string }) => {
+  const provider = await loadProvider(supabase, providerId)
+  const key = await resolveProviderApiKey(supabase, provider)
+  if (!key) return { ok: false as const, models: [] as string[], message: 'No API key configured for this provider.' }
+  const base = defaultBaseUrl(provider)
+  if (provider.auth_type === 'google') {
+    const { resp, text } = await safeFetch(`${base}/v1beta/models?pageSize=1000`, { headers: { 'x-goog-api-key': key.apiKey } }, 15_000)
+    if (!resp.ok) return { ok: false as const, models: [], message: describeProviderError(resp.status, text) }
+    const parsed = JSON.parse(text) as any
+    const models = ((parsed.models ?? []) as any[])
+      .filter((m) => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+      .map((m) => String(m.name ?? '').replace(/^models\//, ''))
+      .filter((n) => n && !/tts|embedding|image|imagen|veo|aqa|native-audio|live/i.test(n))
+    return { ok: true as const, models: Array.from(new Set(models)).sort(), message: null }
+  }
+  const { resp, text } = await safeFetch(`${base}/models`, { headers: { Authorization: `Bearer ${key.apiKey}` } }, 15_000)
+  if (!resp.ok) return { ok: false as const, models: [], message: describeProviderError(resp.status, text) }
+  const parsed = JSON.parse(text) as any
+  const models = ((parsed.data ?? []) as any[]).map((m) => String(m.id ?? '')).filter((n) => n && !/embed|whisper|tts|dall-e|moderation|audio|image|transcribe|guard/i.test(n))
+  return { ok: true as const, models: Array.from(new Set(models)).sort(), message: null }
+}
+
+/** Sends one tiny JSON request to exactly this provider + model (+ key) and reports the outcome. */
+export const probeProviderModel = async ({
+  supabase,
+  providerId,
+  modelName,
+  keyId,
+}: {
+  supabase: SupabaseLike
+  providerId: string
+  modelName: string
+  keyId?: string | null
+}) => {
+  const provider = await loadProvider(supabase, providerId)
+  const key = await resolveProviderApiKey(supabase, provider, keyId)
+  if (!key) return { ok: false, status: 0, latency_ms: 0, key_source: null, message: 'No API key configured for this provider — requests to it are skipped.', preview: null }
+  const base = defaultBaseUrl(provider)
+  const prompt = 'Reply with exactly this JSON and nothing else: {"ok": true}'
+  const started = Date.now()
+  const { resp, text } =
+    provider.auth_type === 'google'
+      ? await safeFetch(
+          `${base}/v1beta/models/${encodeURIComponent(modelName)}:generateContent`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key.apiKey },
+            body: JSON.stringify({
+              contents: [{ role: 'user', parts: [{ text: prompt }] }],
+              generationConfig: { temperature: 0, responseMimeType: 'application/json', ...(/2\.5-flash/.test(modelName) ? { thinkingConfig: { thinkingBudget: 0 } } : {}) },
+            }),
+          },
+          35_000,
+        )
+      : await safeFetch(
+          `${base}/chat/completions`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key.apiKey}` },
+            body: JSON.stringify({ model: modelName, messages: [{ role: 'user', content: prompt }], temperature: 0, response_format: { type: 'json_object' } }),
+          },
+          35_000,
+        )
+  const latency = Date.now() - started
+  if (key.keyId) await supabase.from('ai_provider_keys').update(resp.ok ? { last_used_at: nowIso() } : { last_error_at: nowIso() }).eq('id', key.keyId)
+  if (!resp.ok) return { ok: false, status: resp.status, latency_ms: latency, key_source: key.source, message: describeProviderError(resp.status, text), preview: text.slice(0, 300) }
+  const content = provider.auth_type === 'google' ? parseGeminiText(text) : parseOpenAiLikeText(text)
+  return { ok: true, status: resp.status, latency_ms: latency, key_source: key.source, message: 'Working', preview: content.slice(0, 120) }
+}

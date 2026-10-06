@@ -143,9 +143,9 @@ export default function AdminShell() {
               <AdminNavLink to="/admin/usage" label="Usage" icon={BarChart3} />
               <div className="pt-2 text-[11px] font-semibold uppercase tracking-wide text-white/50">AI model layer</div>
               <AdminNavLink to="/admin/ai/providers" label="Providers & keys" icon={KeyRound} />
-              <AdminNavLink to="/admin/ai/models" label="Models" icon={Boxes} />
-              <AdminNavLink to="/admin/ai/routing" label="Routing" icon={Route} />
-              <AdminNavLink to="/admin/ai/entitlements" label="Entitlements" icon={Bot} />
+              <AdminNavLink to="/admin/ai/models" label="Models & routing" icon={Boxes} />
+              <AdminNavLink to="/admin/ai/routing" label="Routing (advanced)" icon={Route} />
+              <AdminNavLink to="/admin/ai/entitlements" label="Plan limits" icon={Bot} />
               <AdminNavLink to="/admin/settings" label="App settings" icon={Sliders} />
               <AdminNavLink to="/admin/flags" label="Feature toggles" icon={ToggleLeft} />
               <AdminNavLink to="/admin/logs" label="Audit logs" icon={ScrollText} />
