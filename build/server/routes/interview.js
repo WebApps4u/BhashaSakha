@@ -10,6 +10,9 @@ const router = Router();
 // Thinking budgets keep each AI call well inside the gateway's 35 s timeout.
 const ANALYSIS_THINKING_BUDGET = 1024;
 const EVALUATION_THINKING_BUDGET = 1024;
+/** A rejoin after this much inactivity pauses the clock for the time away (minus a short grace). */
+const REJOIN_IDLE_PAUSE_MS = 90000;
+const REJOIN_GRACE_MS = 15000;
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 4 * 1024 * 1024 } });
 const getSupabaseUrl = () => process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? '';
 const getSupabaseAnonKey = () => process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY ?? '';
@@ -458,7 +461,24 @@ router.post('/sessions/:id/start', async (req, res) => {
         if (!session)
             return jsonError(res, 404, 'Interview not found');
         if (session.status === 'live') {
-            res.status(200).json({ success: true, session: sessionPayload(session), turns: await loadTurns(supabase, session.id), resumed: true });
+            // Pause the clock while the candidate was away: shift started_at by the idle gap since the last turn,
+            // so rejoining later doesn't find the interview already "out of time".
+            const turns = await loadTurns(supabase, session.id);
+            const lastActivity = Math.max(...turns.map((t) => new Date(t.created_at).getTime()), new Date(session.started_at ?? Date.now()).getTime());
+            const idleMs = Date.now() - lastActivity;
+            let current = session;
+            if (session.started_at && idleMs > REJOIN_IDLE_PAUSE_MS) {
+                const startedAt = new Date(new Date(session.started_at).getTime() + idleMs - REJOIN_GRACE_MS).toISOString();
+                const { data: updated } = await supabase
+                    .from('interview_sessions')
+                    .update({ started_at: startedAt, updated_at: new Date().toISOString() })
+                    .eq('id', session.id)
+                    .select('*')
+                    .maybeSingle();
+                if (updated)
+                    current = updated;
+            }
+            res.status(200).json({ success: true, session: sessionPayload(current), turns, resumed: true });
             return;
         }
         if (session.status !== 'ready')

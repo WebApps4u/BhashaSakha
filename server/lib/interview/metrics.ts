@@ -227,6 +227,8 @@ export const deliveryScore = (metrics: AnswerMetrics[]) => {
   return Math.round(mean(perAnswer) ?? 0)
 }
 
+export const MIN_THREADS_FOR_READINESS = 2
+
 export type CategoryKey = 'technical' | 'communication' | 'behavioral' | 'role_alignment' | 'delivery'
 
 export const CATEGORY_LABELS: Record<CategoryKey, string> = {
@@ -303,7 +305,8 @@ export const computeScorecard = ({
     dimensions,
     categories,
     delivery_score: delivery,
-    readiness: weightSum ? Math.round(weighted / weightSum) : null,
+    // A single answer is not enough evidence for an overall readiness number.
+    readiness: weightSum && answeredThreads >= MIN_THREADS_FOR_READINESS ? Math.round(weighted / weightSum) : null,
     low_confidence: answeredThreads < 3,
     weights,
   }

@@ -233,7 +233,9 @@ export default function InterviewReport() {
                 {readiness != null ? <span className="text-2xl font-light text-neutral-400">%</span> : null}
               </div>
               {readiness != null ? <div className="mt-1 text-sm font-medium">{readinessLabel(readiness)}</div> : null}
-              {scores.low_confidence ? (
+              {readiness == null ? (
+                <p className="mt-3 text-xs text-amber-700 dark:text-amber-300">Answer at least 2 questions to get a readiness score. The feedback below still covers what you answered.</p>
+              ) : scores.low_confidence ? (
                 <p className="mt-3 text-xs text-amber-700 dark:text-amber-300">Based on only {feedback.length} answered question{feedback.length === 1 ? '' : 's'}. A longer interview gives a more reliable score.</p>
               ) : null}
               <div className="mt-8 space-y-4">
