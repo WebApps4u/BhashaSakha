@@ -18,6 +18,7 @@ export function useInterviewVoice() {
   const cancelRef = useRef<(() => void) | null>(null)
   const mutedRef = useRef(false)
   const [speakingId, setSpeakingId] = useState<string | null>(null)
+  const [preparingId, setPreparingId] = useState<string | null>(null)
   const [muted, setMutedState] = useState(false)
 
   useEffect(() => {
@@ -95,9 +96,13 @@ export function useInterviewVoice() {
     }
   }
 
-  /** Speaks a line and resolves when it has finished (or after a reading delay when muted). */
+  /**
+   * Speaks a line and resolves when it has finished (or after a reading delay when muted).
+   * clipOnly: skip silently unless the panelist's own voice clip is available — used for short
+   * acknowledgements, so a robotic browser voice never interrupts a panelist's real voice.
+   */
   const speak = useCallback(
-    (text: string, panelist: Panelist) =>
+    (text: string, panelist: Panelist, { clipOnly = false }: { clipOnly?: boolean } = {}) =>
       new Promise<void>((resolve) => {
         cancelRef.current?.()
         let done = false
@@ -106,11 +111,16 @@ export function useInterviewVoice() {
           done = true
           cancelRef.current = null
           setSpeakingId(null)
+          setPreparingId(null)
           resolve()
         }
-        setSpeakingId(panelist.id)
 
         if (mutedRef.current) {
+          if (clipOnly) {
+            finish()
+            return
+          }
+          setSpeakingId(panelist.id)
           const t = window.setTimeout(finish, readingMs(text))
           cancelRef.current = () => {
             window.clearTimeout(t)
@@ -126,23 +136,34 @@ export function useInterviewVoice() {
           finish()
         }
 
+        const viaBrowser = () => {
+          if (clipOnly) {
+            finish()
+            return
+          }
+          setPreparingId(null)
+          setSpeakingId(panelist.id)
+          stopBrowser = speakWithBrowser(text, panelist, finish)
+        }
+
+        setPreparingId(panelist.id)
         void fetchClip(text, panelist).then((url) => {
           if (done) return
           if (!url) {
-            stopBrowser = speakWithBrowser(text, panelist, finish)
+            viaBrowser()
             return
           }
           if (!audioRef.current) audioRef.current = new Audio()
           const a = audioRef.current
           a.onended = finish
-          a.onerror = () => {
-            stopBrowser = speakWithBrowser(text, panelist, finish)
+          a.onerror = viaBrowser
+          a.onplaying = () => {
+            setPreparingId(null)
+            setSpeakingId(panelist.id)
           }
           a.src = url
           a.currentTime = 0
-          a.play().catch(() => {
-            stopBrowser = speakWithBrowser(text, panelist, finish)
-          })
+          a.play().catch(viaBrowser)
         })
       }),
     [fetchClip],
@@ -157,5 +178,5 @@ export function useInterviewVoice() {
     if (!value && audioRef.current) audioRef.current.volume = 1
   }, [])
 
-  return { speak, stop, prefetch: fetchClip, unlock, speakingId, muted, setMuted }
+  return { speak, stop, prefetch: fetchClip, unlock, speakingId, preparingId, muted, setMuted }
 }

@@ -24,7 +24,9 @@ type AnswerPayload = {
 type TurnResponse = { candidate_turn: Turn; interviewer_turn: Turn; is_final: boolean }
 
 // Short acknowledgements cover the moment the panel "thinks" about the next question.
+// Every third answer gets none, so it doesn't feel scripted.
 const ACKS = ['Okay.', 'Right, thank you.', 'Got it.']
+const ackFor = (answersSoFar: number) => (answersSoFar % 3 === 2 ? null : ACKS[answersSoFar % ACKS.length])
 const STRESS_INTERRUPT_MS = 150_000
 
 export default function InterviewRoom() {
@@ -46,6 +48,8 @@ export default function InterviewRoom() {
   const [now, setNow] = useState(Date.now())
 
   const phaseRef = useRef<Phase>('loading')
+  const turnsRef = useRef<Turn[]>([])
+  turnsRef.current = turns
   const typingRef = useRef(false)
   const micMutedRef = useRef(false)
   const finalRef = useRef(false)
@@ -159,8 +163,13 @@ export default function InterviewRoom() {
     setNotice(null)
     setSubmitted(null)
     setDraft('')
+    // Fetch the acknowledgement for this answer while the candidate is talking (one request, cached globally).
+    const current = turnsRef.current
+    const ack = ackFor(current.filter((t) => t.speaker === 'candidate').length)
+    const lastAsker = [...current].reverse().find((t) => t.speaker === 'interviewer')
+    if (ack && lastAsker && !voice.muted) void voice.prefetch(ack, personaFor(lastAsker.persona_id))
     await capture.begin({ listen: !typingRef.current && !micMutedRef.current })
-  }, [capture])
+  }, [capture, personaFor, voice])
 
   const askTurn = useCallback(
     async (turn: Turn) => {
@@ -184,8 +193,8 @@ export default function InterviewRoom() {
       setSubmitted(payload.text || null)
 
       const speaker = lastInterviewerTurn ? personaFor(lastInterviewerTurn.persona_id) : panel[0]
-      const candidateCount = turns.filter((t) => t.speaker === 'candidate').length
-      const ack = speaker && candidateCount % 3 !== 2 ? voice.speak(ACKS[candidateCount % ACKS.length], speaker) : Promise.resolve()
+      const ackText = ackFor(turns.filter((t) => t.speaker === 'candidate').length)
+      const ack = speaker && ackText ? voice.speak(ackText, speaker, { clipOnly: true }) : Promise.resolve()
 
       try {
         const [r] = await Promise.all([interviewApi<TurnResponse>(`/sessions/${sessionId}/turns`, { body: payload }), ack])
@@ -240,7 +249,6 @@ export default function InterviewRoom() {
       setSession(r.session)
       setTurns(r.turns)
       finalRef.current = r.session.is_final
-      for (const p of r.session.panel) for (const a of ACKS) void voice.prefetch(a, p)
 
       const last = r.turns[r.turns.length - 1]
       if (!last) throw new Error('The interview could not be started.')
@@ -522,7 +530,7 @@ export default function InterviewRoom() {
               </button>
             ) : (
               <span className="inline-flex h-11 items-center px-3 text-xs text-neutral-400">
-                {phase === 'speaking' ? `${asker?.first_name ?? 'Panel'} is speaking…` : phase === 'thinking' ? 'Panel is noting your answer…' : phase === 'ending' ? 'Wrapping up…' : ''}
+                {phase === 'speaking' ? `${asker?.first_name ?? 'Panel'} ${voice.speakingId ? 'is speaking…' : 'is about to speak…'}` : phase === 'thinking' ? 'Panel is noting your answer…' : phase === 'ending' ? 'Wrapping up…' : ''}
               </span>
             )}
             <button
