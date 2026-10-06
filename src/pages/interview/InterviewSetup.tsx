@@ -36,6 +36,7 @@ export default function InterviewSetup() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const { user, isReady } = useAuthStore()
+  const userId = user?.id ?? null
 
   const [step, setStep] = useState<Step>(0)
   const [error, setError] = useState<string | null>(null)
@@ -81,7 +82,7 @@ export default function InterviewSetup() {
   // "Practice again" re-uses an analysed profile and skips straight to the recommendation.
   useEffect(() => {
     const profileId = params.get('profile')
-    if (!profileId || !user) return
+    if (!profileId || !userId) return
     let alive = true
     void interviewApi<AnalyzeResponse>(`/profiles/${profileId}`)
       .then((r) => {
@@ -94,7 +95,7 @@ export default function InterviewSetup() {
       alive = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user])
+  }, [userId])
 
   // Panel and round plan follow the candidate's edits (cheap server call, no AI).
   const previewSeq = useRef(0)

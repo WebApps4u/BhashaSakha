@@ -35,6 +35,8 @@ export default function InterviewRoom() {
   const { sessionId = '' } = useParams()
   const navigate = useNavigate()
   const { user, isReady, init } = useAuthStore()
+  // Supabase issues a new user object on every token refresh/focus check; key effects on the stable id.
+  const userId = user?.id ?? null
 
   const [session, setSession] = useState<InterviewSession | null>(null)
   const [turns, setTurns] = useState<Turn[]>([])
@@ -98,11 +100,13 @@ export default function InterviewRoom() {
   }, [isReady, user, navigate])
 
   useEffect(() => {
-    if (!user || !sessionId) return
+    if (!userId || !sessionId) return
+    // Only the initial load may put the room in the lobby; never reset a call in progress.
+    if (phaseRef.current !== 'loading') return
     let alive = true
     void interviewApi<{ session: InterviewSession; turns: Turn[] }>(`/sessions/${sessionId}`)
       .then((r) => {
-        if (!alive) return
+        if (!alive || phaseRef.current !== 'loading') return
         if (r.session.status !== 'ready' && r.session.status !== 'live') {
           navigate(`/interview/${sessionId}/report`, { replace: true })
           return
@@ -123,7 +127,7 @@ export default function InterviewRoom() {
       alive = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, sessionId])
+  }, [userId, sessionId])
 
   useEffect(() => {
     const on = () => setOnline(true)
@@ -890,22 +894,39 @@ function useRoomEvents(sessionId: string, getPhase: () => string) {
   const getPhaseRef = useRef(getPhase)
   getPhaseRef.current = getPhase
 
+  // Keep the token current: access tokens expire hourly and are refreshed in the background.
   useEffect(() => {
     void supabase.auth.getSession().then(({ data }) => {
       tokenRef.current = data.session?.access_token ?? ''
     })
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      tokenRef.current = session?.access_token ?? ''
+    })
+    return () => sub.subscription.unsubscribe()
   }, [])
 
   const flush = useCallback(
     (keepalive = false) => {
-      if (!queue.current.length || !tokenRef.current || !sessionId) return
+      if (!queue.current.length || !sessionId) return
       const events = queue.current.splice(0, 25)
-      void fetch(`/api/interview/sessions/${sessionId}/events`, {
-        method: 'POST',
-        keepalive,
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenRef.current}` },
-        body: JSON.stringify({ events }),
-      }).catch(() => undefined)
+      const send = (token: string) => {
+        if (!token) return
+        void fetch(`/api/interview/sessions/${sessionId}/events`, {
+          method: 'POST',
+          keepalive,
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ events }),
+        }).catch(() => undefined)
+      }
+      // Page unload can't wait for an async refresh; otherwise ask Supabase for a valid token first.
+      if (keepalive) {
+        send(tokenRef.current)
+        return
+      }
+      void supabase.auth.getSession().then(({ data }) => {
+        tokenRef.current = data.session?.access_token ?? tokenRef.current
+        send(tokenRef.current)
+      })
     },
     [sessionId],
   )

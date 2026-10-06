@@ -41,6 +41,7 @@ export default function InterviewReport() {
   const { sessionId = '' } = useParams()
   const navigate = useNavigate()
   const { user, isReady } = useAuthStore()
+  const userId = user?.id ?? null
   const [detail, setDetail] = useState<Detail | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [evalProgress, setEvalProgress] = useState<{ evaluated: number; total: number } | null>(null)
@@ -78,13 +79,13 @@ export default function InterviewReport() {
   }, [isReady, user, navigate])
 
   useEffect(() => {
-    if (!user) return
+    if (!userId) return
     void load()
       .then((r) => {
         if (r.session.status === 'evaluating') void runEvaluation()
       })
       .catch((e) => setError(e.message))
-  }, [user, load, runEvaluation])
+  }, [userId, load, runEvaluation])
 
   const endAndEvaluate = async () => {
     setBusy(true)

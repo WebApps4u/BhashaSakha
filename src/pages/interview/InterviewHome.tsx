@@ -21,13 +21,14 @@ const STATUS_LABEL: Record<SessionListItem['status'], string> = {
 export default function InterviewHome() {
   const navigate = useNavigate()
   const { user, isReady } = useAuthStore()
+  const userId = user?.id ?? null
   const [sessions, setSessions] = useState<SessionListItem[] | null>(null)
   const [quota, setQuota] = useState<Quota | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!isReady) return
-    if (!user) {
+    if (!userId) {
       navigate('/login')
       return
     }
@@ -37,7 +38,7 @@ export default function InterviewHome() {
         setQuota(r.quota)
       })
       .catch((e) => setError(e.message))
-  }, [isReady, user, navigate])
+  }, [isReady, userId, navigate])
 
   // Improvement = change in readiness vs. the previous completed interview for the same target role.
   const rows = useMemo(() => {
