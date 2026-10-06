@@ -5,6 +5,16 @@ type SupabaseLike = {
   rpc: (fn: string, args?: Record<string, any>) => any
 }
 
+export type ModelGenerationOptions = {
+  /** Sampling temperature; defaults to 0 (deterministic) as used by translation. */
+  temperature?: number
+  /**
+   * Caps Gemini 2.5 Flash "thinking" tokens to bound latency (0 disables thinking).
+   * Ignored by other models and providers.
+   */
+  thinkingBudget?: number
+}
+
 export type AllowedModel = {
   model_id: string
   display_name: string
@@ -198,6 +208,9 @@ const buildAttemptsFromPolicy = (policy: RoutingPolicy): RouteAttempt[] => {
   return keys.slice(0, maxAttempts).map((providerKey) => ({ providerKey }))
 }
 
+/** Interview models are metered internally and must not appear in the translation model picker. */
+export const isUserSelectableModelId = (modelId: string) => !modelId.startsWith('interview_')
+
 export const getAllowedModelsForUser = async (supabase: SupabaseLike, userId: string): Promise<AllowedModel[]> => {
   const { data, error } = await supabase.rpc('ai_get_allowed_models', { uid: userId })
   if (error) throw new Error(error.message || 'Failed to load allowed models')
@@ -307,21 +320,31 @@ const callGeminiGenerateContent = async ({
   apiKey,
   model,
   promptText,
+  generation,
 }: {
   baseUrl: string
   apiKey: string
   model: string
   promptText: string
+  generation: ModelGenerationOptions
 }) => {
   const normalizedBase = baseUrl.replace(/\/$/, '')
-  const bodyFor = (apiVersion: 'v1' | 'v1beta') =>
+  const temperature = generation.temperature ?? 0
+  const bodyFor = (apiVersion: 'v1' | 'v1beta', useModel: string) =>
     JSON.stringify({
       contents: [{ role: 'user', parts: [{ text: promptText }] }],
       generationConfig:
         apiVersion === 'v1beta'
-          ? { temperature: 0, responseMimeType: 'application/json' }
+          ? {
+              temperature,
+              responseMimeType: 'application/json',
+              // Gemini 2.5 Flash "thinks" by default, which can add tens of seconds of latency.
+              ...(typeof generation.thinkingBudget === 'number' && /2\.5-flash/.test(useModel)
+                ? { thinkingConfig: { thinkingBudget: Math.max(0, Math.round(generation.thinkingBudget)) } }
+                : {}),
+            }
           : {
-              temperature: 0,
+              temperature,
             },
     })
 
@@ -336,7 +359,7 @@ const callGeminiGenerateContent = async ({
           'Content-Type': 'application/json',
           'x-goog-api-key': apiKey,
         },
-        body: bodyFor(apiVersion),
+        body: bodyFor(apiVersion, useModel),
       },
       35_000,
     )
@@ -381,11 +404,13 @@ const callOpenAiChatCompletions = async ({
   apiKey,
   model,
   promptText,
+  generation,
 }: {
   baseUrl: string
   apiKey: string
   model: string
   promptText: string
+  generation: ModelGenerationOptions
 }) => {
   const url = `${baseUrl.replace(/\/$/, '')}/chat/completions`
   const { resp, text } = await fetchWithTimeout(
@@ -399,7 +424,7 @@ const callOpenAiChatCompletions = async ({
       body: JSON.stringify({
         model,
         messages: [{ role: 'user', content: promptText }],
-        temperature: 0,
+        temperature: generation.temperature ?? 0,
         response_format: { type: 'json_object' },
       }),
     },
@@ -459,12 +484,14 @@ export const runModelRequest = async ({
   requestedModelId,
   promptText,
   unitCounts,
+  generation = {},
 }: {
   supabase: SupabaseLike
   userId: string
   requestedModelId: string
   promptText: string
   unitCounts: { inputUnits: number; outputUnits: number }
+  generation?: ModelGenerationOptions
 }) => {
   const requestedModel = await resolveModelRow(supabase, requestedModelId)
   const policyRow = await resolveRoutingPolicy(supabase, requestedModel.id)
@@ -531,8 +558,8 @@ export const runModelRequest = async ({
 
       const callResult =
         provider.auth_type === 'google'
-          ? await callGeminiGenerateContent({ baseUrl, apiKey, model: mapping, promptText })
-          : await callOpenAiChatCompletions({ baseUrl, apiKey, model: mapping, promptText })
+          ? await callGeminiGenerateContent({ baseUrl, apiKey, model: mapping, promptText, generation })
+          : await callOpenAiChatCompletions({ baseUrl, apiKey, model: mapping, promptText, generation })
 
       if (!callResult.ok) {
         lastError = { status: callResult.status, code: `provider_http_${callResult.status}`, details: callResult.raw.slice(0, 1200) }

@@ -33,7 +33,7 @@ export default function AppShell() {
   const navigate = useNavigate()
   const location = useLocation()
   const liveMatch = useMatch('/live/:category')
-  const liveSection = getLiveSection(liveMatch?.params.category)
+  const liveSection = location.pathname.startsWith('/interview') ? getLiveSection('interview') : getLiveSection(liveMatch?.params.category)
   const liveHref = liveSection ? liveSectionPath(liveSection.id) : DEFAULT_LIVE_PATH
   const { init, isReady, user, signOut } = useAuthStore()
   const { theme, toggle } = useTheme()

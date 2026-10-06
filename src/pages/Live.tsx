@@ -19,6 +19,7 @@ export default function Live() {
   const { category } = useParams()
   const section = getLiveSection(category)
   if (!section) return <Navigate to={DEFAULT_LIVE_PATH} replace />
+  if (section.id === 'interview') return <Navigate to={section.path} replace />
 
   return <LiveWorkspace section={section} />
 }

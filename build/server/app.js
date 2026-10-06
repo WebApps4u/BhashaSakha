@@ -21,6 +21,7 @@ import detectRoutes from './routes/detect.js';
 import detectTextRoutes from './routes/detectText.js';
 import caseFormRoutes from './routes/caseForm.js';
 import liveSegmentsRoutes from './routes/liveSegments.js';
+import interviewRoutes from './routes/interview.js';
 // load env
 dotenv.config();
 const app = express();
@@ -58,6 +59,7 @@ app.use('/api/detect', detectRoutes);
 app.use('/api/detect-text', detectTextRoutes);
 app.use('/api/case-form', caseFormRoutes);
 app.use('/api/live', liveSegmentsRoutes);
+app.use('/api/interview', interviewRoutes);
 const tryServeFrontend = () => {
     const enabled = (process.env.SERVE_FRONTEND ?? '').toLowerCase().trim();
     if (!(enabled === 'true' || enabled === '1' || enabled === 'yes' || process.env.NODE_ENV === 'production'))

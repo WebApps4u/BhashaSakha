@@ -335,13 +335,14 @@ const synthGemini = async ({
   text,
   lang,
   stylePrompt,
+  voiceName,
 }: {
   apiKey: string
   text: string
   lang: string
   stylePrompt: string
+  voiceName: string
 }): Promise<{ buf: Buffer; contentType: string } | null> => {
-  const voiceName = (process.env.GEMINI_TTS_VOICE_NAME ?? '').trim() || 'Kore'
   const rawModels = (process.env.GEMINI_TTS_MODELS ?? '').trim()
   const models = rawModels
     ? rawModels.split(',').map((s) => s.trim()).filter(Boolean)
@@ -378,6 +379,9 @@ const synthGemini = async ({
   return null
 }
 
+// Gemini TTS prebuilt voices callers may request (e.g. distinct interview panelists).
+const GEMINI_PREBUILT_VOICES = ['Kore', 'Aoede', 'Leda', 'Zephyr', 'Puck', 'Charon', 'Fenrir', 'Orus'] as const
+
 router.post('/', async (req: Request, res: Response): Promise<void> => {
   try {
     const v = await verifyUser(req)
@@ -394,6 +398,8 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
     const rate = Number((req.body as any)?.rate ?? 1)
     const pitch = Number((req.body as any)?.pitch ?? 0)
     let stylePrompt = typeof (req.body as any)?.style === 'string' ? String((req.body as any).style).trim().slice(0, 240) : ''
+    const voiceRaw = typeof (req.body as any)?.voice === 'string' ? String((req.body as any).voice).trim() : ''
+    const requestedVoice = GEMINI_PREBUILT_VOICES.find((name) => name.toLowerCase() === voiceRaw.toLowerCase()) ?? ''
     const genderRaw = String((req.body as any)?.gender ?? 'NEUTRAL').toUpperCase()
     const gender = (['FEMALE', 'MALE', 'NEUTRAL', 'SSML_VOICE_GENDER_UNSPECIFIED'] as const).includes(genderRaw as any)
       ? (genderRaw as any)
@@ -429,7 +435,7 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
     }
 
     if (geminiKey) {
-      const voiceName = (process.env.GEMINI_TTS_VOICE_NAME ?? '').trim() || 'Kore'
+      const voiceName = requestedVoice || (process.env.GEMINI_TTS_VOICE_NAME ?? '').trim() || 'Kore'
       const geminiCacheKey = sha256Hex(JSON.stringify({ ...baseKey, provider: 'gemini', voice: voiceName }))
       const storageHit = await storageTryGet({ cacheKey: geminiCacheKey, lang, contentType: 'audio/wav' })
       if (storageHit) {
@@ -450,7 +456,7 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
         return
       }
 
-      const gemini = await synthGemini({ apiKey: geminiKey, text: trimmed, lang, stylePrompt })
+      const gemini = await synthGemini({ apiKey: geminiKey, text: trimmed, lang, stylePrompt, voiceName })
       if (gemini) {
         cacheSet(geminiCacheKey, gemini.buf, gemini.contentType)
         await storagePut({ cacheKey: geminiCacheKey, lang, contentType: gemini.contentType, buf: gemini.buf })

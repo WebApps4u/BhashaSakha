@@ -21,6 +21,10 @@ import AdminAIModels from '@/pages/admin/AdminAIModels'
 import AdminAIRouting from '@/pages/admin/AdminAIRouting'
 import AdminAIEntitlements from '@/pages/admin/AdminAIEntitlements'
 import Setup from '@/pages/Setup'
+import InterviewHome from '@/pages/interview/InterviewHome'
+import InterviewSetup from '@/pages/interview/InterviewSetup'
+import InterviewRoom from '@/pages/interview/InterviewRoom'
+import InterviewReport from '@/pages/interview/InterviewReport'
 import { isSupabaseConfigured, supabaseConfigError } from '@/lib/supabaseClient'
 import { DEFAULT_LIVE_PATH } from '@/lib/liveSections'
 
@@ -53,10 +57,14 @@ export default function App() {
           <Route path="flags" element={<AdminFlags />} />
           <Route path="logs" element={<AdminLogs />} />
         </Route>
+        <Route path="/interview/:sessionId/room" element={<InterviewRoom />} />
         <Route element={<AppShell />}>
           <Route path="/" element={<Navigate to={DEFAULT_LIVE_PATH} replace />} />
           <Route path="/live" element={<Navigate to={DEFAULT_LIVE_PATH} replace />} />
           <Route path="/live/:category" element={<Live />} />
+          <Route path="/interview" element={<InterviewHome />} />
+          <Route path="/interview/new" element={<InterviewSetup />} />
+          <Route path="/interview/:sessionId/report" element={<InterviewReport />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/login" element={<Auth />} />
           <Route path="/account" element={<Account />} />

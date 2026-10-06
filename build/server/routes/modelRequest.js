@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { createClient } from '@supabase/supabase-js';
-import { resolveRequestedModelId, runModelRequest } from '../lib/aiModelLayer.js';
+import { isUserSelectableModelId, resolveRequestedModelId, runModelRequest } from '../lib/aiModelLayer.js';
 const router = Router();
 const getSupabaseUrl = () => process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? '';
 const getSupabaseAnonKey = () => process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY ?? '';
@@ -54,6 +54,10 @@ router.post('/', async (req, res) => {
         const promptText = typeof req.body?.prompt === 'string' ? req.body.prompt : '';
         if (!modelId || !promptText) {
             res.status(400).json({ success: false, error: 'model_id and prompt are required' });
+            return;
+        }
+        if (!isUserSelectableModelId(modelId)) {
+            res.status(400).json({ success: false, error: 'model_id is not available for direct requests' });
             return;
         }
         const supabase = adminClient();

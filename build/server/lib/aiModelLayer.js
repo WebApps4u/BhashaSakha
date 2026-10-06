@@ -115,6 +115,8 @@ const buildAttemptsFromPolicy = (policy) => {
     const maxAttempts = clampAttempts(policy.max_attempts);
     return keys.slice(0, maxAttempts).map((providerKey) => ({ providerKey }));
 };
+/** Interview models are metered internally and must not appear in the translation model picker. */
+export const isUserSelectableModelId = (modelId) => !modelId.startsWith('interview_');
 export const getAllowedModelsForUser = async (supabase, userId) => {
     const { data, error } = await supabase.rpc('ai_get_allowed_models', { uid: userId });
     if (error)
@@ -221,14 +223,22 @@ const resolveProviderModelName = async (supabase, modelPk, providerId) => {
         return null;
     return name.startsWith('models/') ? name.slice('models/'.length) : name;
 };
-const callGeminiGenerateContent = async ({ baseUrl, apiKey, model, promptText, }) => {
+const callGeminiGenerateContent = async ({ baseUrl, apiKey, model, promptText, generation, }) => {
     const normalizedBase = baseUrl.replace(/\/$/, '');
-    const bodyFor = (apiVersion) => JSON.stringify({
+    const temperature = generation.temperature ?? 0;
+    const bodyFor = (apiVersion, useModel) => JSON.stringify({
         contents: [{ role: 'user', parts: [{ text: promptText }] }],
         generationConfig: apiVersion === 'v1beta'
-            ? { temperature: 0, responseMimeType: 'application/json' }
+            ? {
+                temperature,
+                responseMimeType: 'application/json',
+                // Gemini 2.5 Flash "thinks" by default, which can add tens of seconds of latency.
+                ...(typeof generation.thinkingBudget === 'number' && /2\.5-flash/.test(useModel)
+                    ? { thinkingConfig: { thinkingBudget: Math.max(0, Math.round(generation.thinkingBudget)) } }
+                    : {}),
+            }
             : {
-                temperature: 0,
+                temperature,
             },
     });
     const call = async (apiVersion, overrideModel) => {
@@ -240,7 +250,7 @@ const callGeminiGenerateContent = async ({ baseUrl, apiKey, model, promptText, }
                 'Content-Type': 'application/json',
                 'x-goog-api-key': apiKey,
             },
-            body: bodyFor(apiVersion),
+            body: bodyFor(apiVersion, useModel),
         }, 35000);
         const content = parseGeminiText(text);
         return { status: resp.status, ok: resp.ok, raw: text, content };
@@ -276,7 +286,7 @@ const callGeminiGenerateContent = async ({ baseUrl, apiKey, model, promptText, }
     }
     return primary;
 };
-const callOpenAiChatCompletions = async ({ baseUrl, apiKey, model, promptText, }) => {
+const callOpenAiChatCompletions = async ({ baseUrl, apiKey, model, promptText, generation, }) => {
     const url = `${baseUrl.replace(/\/$/, '')}/chat/completions`;
     const { resp, text } = await fetchWithTimeout(url, {
         method: 'POST',
@@ -287,7 +297,7 @@ const callOpenAiChatCompletions = async ({ baseUrl, apiKey, model, promptText, }
         body: JSON.stringify({
             model,
             messages: [{ role: 'user', content: promptText }],
-            temperature: 0,
+            temperature: generation.temperature ?? 0,
             response_format: { type: 'json_object' },
         }),
     }, 35000);
@@ -340,7 +350,7 @@ const resolveProviderKeysAvailability = async (supabase, providers) => {
     }
     return { byKey, available };
 };
-export const runModelRequest = async ({ supabase, userId, requestedModelId, promptText, unitCounts, }) => {
+export const runModelRequest = async ({ supabase, userId, requestedModelId, promptText, unitCounts, generation = {}, }) => {
     const requestedModel = await resolveModelRow(supabase, requestedModelId);
     const policyRow = await resolveRoutingPolicy(supabase, requestedModel.id);
     const policy = (policyRow.policy ?? {});
@@ -401,8 +411,8 @@ export const runModelRequest = async ({ supabase, userId, requestedModelId, prom
             }
             const baseUrl = provider.base_url || (provider.key === 'gemini' ? 'https://generativelanguage.googleapis.com' : 'https://api.openai.com/v1');
             const callResult = provider.auth_type === 'google'
-                ? await callGeminiGenerateContent({ baseUrl, apiKey, model: mapping, promptText })
-                : await callOpenAiChatCompletions({ baseUrl, apiKey, model: mapping, promptText });
+                ? await callGeminiGenerateContent({ baseUrl, apiKey, model: mapping, promptText, generation })
+                : await callOpenAiChatCompletions({ baseUrl, apiKey, model: mapping, promptText, generation });
             if (!callResult.ok) {
                 lastError = { status: callResult.status, code: `provider_http_${callResult.status}`, details: callResult.raw.slice(0, 1200) };
                 if (pkey)

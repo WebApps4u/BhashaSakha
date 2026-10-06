@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express'
 import { createClient } from '@supabase/supabase-js'
-import { getAllowedModelsForUser, resolveRequestedModelId, setUserSelectedModelId, getUserSelectedModelId } from '../lib/aiModelLayer.js'
+import { getAllowedModelsForUser, resolveRequestedModelId, setUserSelectedModelId, getUserSelectedModelId, isUserSelectableModelId } from '../lib/aiModelLayer.js'
 
 const router = Router()
 
@@ -66,7 +66,7 @@ router.get('/allowed', async (req: Request, res: Response) => {
     }
 
     const supabase = adminClient()
-    const allowed = await getAllowedModelsForUser(supabase as any, v.userId)
+    const allowed = (await getAllowedModelsForUser(supabase as any, v.userId)).filter((m) => isUserSelectableModelId(m.model_id))
     const selected = await getUserSelectedModelId(supabase as any, v.userId)
     const { data: planData } = await (supabase as any).rpc('get_user_plan', { uid: v.userId })
     const planRow = Array.isArray(planData) ? (planData[0] as any) : (planData as any)
@@ -103,6 +103,10 @@ router.put('/selection', async (req: Request, res: Response) => {
     const modelId = typeof (req.body as any)?.model_id === 'string' ? (req.body as any).model_id.trim() : ''
     if (!modelId) {
       res.status(400).json({ success: false, error: 'model_id is required' })
+      return
+    }
+    if (!isUserSelectableModelId(modelId)) {
+      res.status(400).json({ success: false, error: 'model_id is not selectable' })
       return
     }
 

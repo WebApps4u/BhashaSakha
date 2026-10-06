@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express'
 import { createClient } from '@supabase/supabase-js'
-import { resolveRequestedModelId, runModelRequest } from '../lib/aiModelLayer.js'
+import { isUserSelectableModelId, resolveRequestedModelId, runModelRequest } from '../lib/aiModelLayer.js'
 
 const router = Router()
 
@@ -59,6 +59,10 @@ router.post('/', async (req: Request, res: Response) => {
     const promptText = typeof (req.body as any)?.prompt === 'string' ? (req.body as any).prompt : ''
     if (!modelId || !promptText) {
       res.status(400).json({ success: false, error: 'model_id and prompt are required' })
+      return
+    }
+    if (!isUserSelectableModelId(modelId)) {
+      res.status(400).json({ success: false, error: 'model_id is not available for direct requests' })
       return
     }
 

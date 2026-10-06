@@ -23,12 +23,14 @@
     "express": "^4.21.2",
     "i18next": "^23.16.8",
     "lucide-react": "^0.511.0",
+    "mammoth": "^1.13.0",
     "multer": "^2.1.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-i18next": "^15.4.1",
     "react-router-dom": "^7.3.0",
     "tailwind-merge": "^3.0.2",
+    "unpdf": "^1.7.0",
     "zustand": "^5.0.3"
   },
   "devDependencies": {
