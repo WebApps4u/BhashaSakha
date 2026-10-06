@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertTriangle, CheckCircle2, ExternalLink, FlaskConical, KeyRound, Loader2, Pencil, Plus, Power, RefreshCw, Star, X } from 'lucide-react'
+import { AlertTriangle, ArrowDown, ArrowUp, CheckCircle2, ExternalLink, FlaskConical, KeyRound, Loader2, Pencil, Plus, Power, RefreshCw, X } from 'lucide-react'
 import { useGlobalLoading } from '@/hooks/useGlobalLoading'
 import { adminApi, timeAgo, type AiOverview, type AiProviderView, type ProbeResult } from '@/lib/adminApi'
 import { ModelInput, ProbeResultLine } from '@/components/admin/AiParts'
@@ -335,7 +335,7 @@ function KeysPanel({ provider, onChanged }: { provider: AiProviderView; onChange
   const [error, setError] = useState<string | null>(null)
 
   const keys = useMemo(() => [...provider.keys].sort((a, b) => (a.status === b.status ? b.priority - a.priority : a.status === 'active' ? -1 : 1)), [provider.keys])
-  const topPriority = Math.max(0, ...provider.keys.map((k) => k.priority))
+  const lowestPriority = Math.min(1000, ...provider.keys.map((k) => k.priority))
   const activeOrder = keys.filter((k) => k.status === 'active')
 
   const act = async (fn: () => Promise<unknown>) => {
@@ -351,11 +351,31 @@ function KeysPanel({ provider, onChanged }: { provider: AiProviderView; onChange
     }
   }
 
+  // Rewrites priorities as 10, 20, 30… in the chosen order (highest = tried first).
+  const reorder = (from: number, to: number) =>
+    act(async () => {
+      const order = [...activeOrder]
+      const [moved] = order.splice(from, 1)
+      order.splice(to, 0, moved)
+      await Promise.all(
+        order.map((k, idx) => {
+          const priority = (order.length - idx) * 10
+          return k.priority === priority ? Promise.resolve() : adminApi(`/ai/provider-keys/${k.id}`, { method: 'PUT', body: { priority } })
+        }),
+      )
+    })
+
   return (
     <div className="mt-4 space-y-3 rounded-xl bg-slate-50 p-4 text-sm">
-      <div className="text-slate-700">
-        Keys are stored encrypted and never shown again. Requests use the <strong>primary</strong> key; others are spares you can promote.
-        {provider.env_key ? ' If no key is saved here, the server environment key is used.' : ''}
+      <div className="space-y-1 text-slate-700">
+        <p>
+          Keys are stored encrypted and never shown again. Requests try keys <strong>in this order</strong>: if a key is rejected or hits its own quota or rate limit, the next key is used
+          automatically, then the next provider in the route.
+          {provider.env_key ? ' The server environment key is tried last if it is different.' : ''}
+        </p>
+        {provider.auth_type === 'google' ? (
+          <p className="text-xs text-slate-500">Gemini limits apply per Google Cloud project, so keys from the same project share one quota — a second key only adds capacity if it belongs to a different project.</p>
+        ) : null}
       </div>
       {error ? <div className="rounded-lg bg-rose-50 px-3 py-2 text-rose-800">{error}</div> : null}
       {keys.length ? (
@@ -370,9 +390,9 @@ function KeysPanel({ provider, onChanged }: { provider: AiProviderView; onChange
                     {k.status !== 'active' ? (
                       <span className="text-xs text-slate-500">(disabled)</span>
                     ) : isPrimary ? (
-                      <span className="rounded bg-slate-900 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white">Primary</span>
+                      <span className="rounded bg-slate-900 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white">1st</span>
                     ) : (
-                      <span className="text-xs text-slate-500">spare</span>
+                      <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-slate-700">{ordinal(activeOrder.indexOf(k) + 1)}</span>
                     )}
                     <div className="text-xs text-slate-500">
                       added {timeAgo(k.created_at)} · last success {timeAgo(k.last_used_at)} · last error {timeAgo(k.last_error_at)}
@@ -382,10 +402,15 @@ function KeysPanel({ provider, onChanged }: { provider: AiProviderView; onChange
                     {k.status === 'active' ? (
                       <SmallButton onClick={() => setTesting(testing === k.id ? null : k.id)}>Test</SmallButton>
                     ) : null}
-                    {k.status === 'active' && !isPrimary ? (
-                      <SmallButton disabled={busy} onClick={() => void act(() => adminApi(`/ai/provider-keys/${k.id}`, { method: 'PUT', body: { priority: topPriority + 10 } }))}>
-                        <Star className="h-3 w-3" /> Make primary
-                      </SmallButton>
+                    {k.status === 'active' && activeOrder.length > 1 ? (
+                      <>
+                        <SmallButton disabled={busy || isPrimary} onClick={() => void reorder(activeOrder.indexOf(k), activeOrder.indexOf(k) - 1)} label="Try earlier">
+                          <ArrowUp className="h-3 w-3" />
+                        </SmallButton>
+                        <SmallButton disabled={busy || activeOrder.indexOf(k) === activeOrder.length - 1} onClick={() => void reorder(activeOrder.indexOf(k), activeOrder.indexOf(k) + 1)} label="Try later">
+                          <ArrowDown className="h-3 w-3" />
+                        </SmallButton>
+                      </>
                     ) : null}
                     <SmallButton onClick={() => setReplacing(replacing === k.id ? null : k.id)}>Replace</SmallButton>
                     <SmallButton
@@ -428,7 +453,7 @@ function KeysPanel({ provider, onChanged }: { provider: AiProviderView; onChange
           e.preventDefault()
           void act(async () => {
             await adminApi('/ai/provider-keys', {
-              body: { provider_id: provider.id, label: label.trim() || `key ${provider.keys.length + 1}`, key: secret.trim(), priority: provider.keys.length ? topPriority - 10 : 100, status: 'active' },
+              body: { provider_id: provider.id, label: label.trim() || `key ${provider.keys.length + 1}`, key: secret.trim(), priority: provider.keys.length ? Math.max(1, lowestPriority - 10) : 100, status: 'active' },
             })
             setLabel('')
             setSecret('')
@@ -445,9 +470,11 @@ function KeysPanel({ provider, onChanged }: { provider: AiProviderView; onChange
   )
 }
 
-function SmallButton({ children, onClick, disabled }: { children: ReactNode; onClick: () => void; disabled?: boolean }) {
+const ordinal = (n: number) => `${n}${n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'}`
+
+function SmallButton({ children, onClick, disabled, label }: { children: ReactNode; onClick: () => void; disabled?: boolean; label?: string }) {
   return (
-    <button type="button" onClick={onClick} disabled={disabled} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+    <button type="button" onClick={onClick} disabled={disabled} aria-label={label} title={label} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50">
       {children}
     </button>
   )

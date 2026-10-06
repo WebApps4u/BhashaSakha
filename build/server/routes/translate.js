@@ -299,6 +299,8 @@ router.post('/', async (req, res) => {
                     res.status(429).json({ success: false, error: 'Monthly limit reached', code: 'quota_exceeded', month });
                     return;
                 }
+                // Don't fail the user's translation, but never hide a broken meter: plan limits depend on it.
+                console.error('[translate] meter_translation failed; plan usage was not recorded:', meterErr.code ?? '', meterErr.message);
             }
             else {
                 meterInfo = meterData;

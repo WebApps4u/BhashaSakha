@@ -210,7 +210,7 @@ export const getUsageOverview = async (supabase, month) => {
     const [y, m] = month.split('-').map(Number);
     const from = new Date(Date.UTC(y, m - 1, 1)).toISOString();
     const to = new Date(Date.UTC(y, m, 1)).toISOString();
-    const [events, usageRows, modelsRes, providersRes, entRes] = await Promise.all([
+    const [events, usageRows, planUsageRows, modelsRes, providersRes, entRes] = await Promise.all([
         fetchAll(() => supabase
             .from('ai_usage_events')
             .select('created_at,user_id,status,error_code,model_pk_used,provider_id_used,input_units,output_units')
@@ -218,6 +218,7 @@ export const getUsageOverview = async (supabase, month) => {
             .lt('created_at', to)
             .order('created_at', { ascending: true })),
         fetchAll(() => supabase.from('ai_usage_months').select('user_id,model_pk,requests_used,input_units_used,output_units_used,updated_at').eq('month', month)),
+        fetchAll(() => supabase.from('usage_months').select('user_id,requests_used,chars_used,updated_at').eq('month', month)),
         supabase.from('ai_models').select('id,model_id,display_name,status'),
         supabase.from('ai_providers').select('id,key,name'),
         supabase.from('ai_plan_entitlements').select('plan_code,model_pk,is_enabled,monthly_request_limit'),
@@ -266,7 +267,7 @@ export const getUsageOverview = async (supabase, month) => {
     }
     totals.users = activeUsers.size;
     // Per user × model quota state (limits = user override, else the plan's entitlement).
-    const userIds = Array.from(new Set([...usageRows.map((r) => r.user_id), ...activeUsers])).filter(Boolean).slice(0, 500);
+    const userIds = Array.from(new Set([...usageRows.map((r) => r.user_id), ...planUsageRows.map((r) => r.user_id), ...activeUsers])).filter(Boolean).slice(0, 500);
     const [profilesRes, overridesRes] = await Promise.all([
         userIds.length ? supabase.from('profiles').select('id,email,display_name').in('id', userIds) : { data: [] },
         userIds.length
@@ -275,17 +276,35 @@ export const getUsageOverview = async (supabase, month) => {
     ]);
     const profiles = new Map((profilesRes.data ?? []).map((p) => [p.id, p]));
     const overrides = (overridesRes.data ?? []);
+    // get_user_plan applies the user's subscription overrides to the plan's monthly limits.
     const plans = new Map();
     for (let i = 0; i < userIds.length; i += 10) {
         await Promise.all(userIds.slice(i, i + 10).map(async (uid) => {
             const { data } = await supabase.rpc('get_user_plan', { uid });
             const row = Array.isArray(data) ? data[0] : data;
-            plans.set(uid, typeof row?.plan_code === 'string' ? row.plan_code : 'free');
+            plans.set(uid, {
+                code: typeof row?.plan_code === 'string' ? row.plan_code : 'free',
+                request_limit: Number(row?.request_limit ?? 0),
+                char_limit: Number(row?.char_limit ?? 0),
+            });
         }));
     }
     const entitlements = (entRes.data ?? []);
+    const limitState = (used, limit) => (limit > 0 && used >= limit ? 'exhausted' : limit > 0 && used / limit >= 0.8 ? 'near' : 'ok');
     const users = userIds.map((uid) => {
-        const plan = plans.get(uid) ?? 'free';
+        const planInfo = plans.get(uid) ?? { code: 'free', request_limit: 0, char_limit: 0 };
+        const plan = planInfo.code;
+        const planRow = planUsageRows.find((r) => r.user_id === uid);
+        const requestsUsed = Number(planRow?.requests_used ?? 0);
+        const charsUsed = Number(planRow?.chars_used ?? 0);
+        const planStates = [limitState(requestsUsed, planInfo.request_limit), limitState(charsUsed, planInfo.char_limit)];
+        const planUsage = {
+            requests_used: requestsUsed,
+            request_limit: planInfo.request_limit > 0 ? planInfo.request_limit : null,
+            chars_used: charsUsed,
+            char_limit: planInfo.char_limit > 0 ? planInfo.char_limit : null,
+            state: planStates.includes('exhausted') ? 'exhausted' : planStates.includes('near') ? 'near' : 'ok',
+        };
         const rows = usageRows.filter((r) => r.user_id === uid);
         const modelIds = new Set([...rows.map((r) => r.model_pk), ...overrides.filter((o) => o.user_id === uid).map((o) => o.model_pk)]);
         const quotas = Array.from(modelIds)
@@ -310,7 +329,8 @@ export const getUsageOverview = async (supabase, month) => {
             };
         })
             .sort((a, b) => (b.limit ? b.used / b.limit : 0) - (a.limit ? a.used / a.limit : 0));
-        const worst = quotas.some((q) => q.state === 'exhausted') ? 'exhausted' : quotas.some((q) => q.state === 'near') ? 'near' : 'ok';
+        const states = [...quotas.map((q) => q.state), planUsage.state];
+        const worst = states.includes('exhausted') ? 'exhausted' : states.includes('near') ? 'near' : 'ok';
         const p = profiles.get(uid);
         return {
             user_id: uid,
@@ -318,9 +338,10 @@ export const getUsageOverview = async (supabase, month) => {
             display_name: p?.display_name ?? null,
             plan_code: plan,
             total_requests: rows.reduce((s, r) => s + Number(r.requests_used ?? 0), 0),
+            plan_usage: planUsage,
             quotas,
             state: worst,
-            last_active_at: lastActive.get(uid) ?? rows.map((r) => r.updated_at).sort().pop() ?? null,
+            last_active_at: lastActive.get(uid) ?? [...rows.map((r) => r.updated_at), planRow?.updated_at].filter(Boolean).sort().pop() ?? null,
         };
     });
     users.sort((a, b) => ({ exhausted: 0, near: 1, ok: 2 })[a.state] - ({ exhausted: 0, near: 1, ok: 2 })[b.state] || b.total_requests - a.total_requests);
@@ -352,7 +373,14 @@ export const getUsageOverview = async (supabase, month) => {
         users,
     };
 };
-export const resetUserUsage = async (supabase, userId, month, modelPk) => {
+/** Resets this month's count: one AI model (modelPk), all AI models, or the plan-level meter (scope 'plan'). */
+export const resetUserUsage = async (supabase, userId, month, modelPk, scope = 'models') => {
+    if (scope === 'plan') {
+        const { error } = await supabase.from('usage_months').delete().eq('user_id', userId).eq('month', month);
+        if (error)
+            throw new Error(error.message);
+        return;
+    }
     let q = supabase.from('ai_usage_months').delete().eq('user_id', userId).eq('month', month);
     if (modelPk)
         q = q.eq('model_pk', modelPk);

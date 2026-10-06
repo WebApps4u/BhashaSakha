@@ -153,7 +153,7 @@ export default function AdminShell() {
           </div>
         </aside>
 
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-w-0 flex-1 flex-col [color-scheme:light]">
           <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
             <div>
               <div className="text-sm font-semibold">Admin Dashboard</div>

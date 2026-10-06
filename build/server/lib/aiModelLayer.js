@@ -208,6 +208,42 @@ const pickProviderKey = async (supabase, providerId, providerKey) => {
         throw new Error(`No active API key configured for provider: ${providerKey || providerId}`);
     return key;
 };
+/** Failures where another key of the same provider may succeed, and how long to try that key last. */
+const KEY_FAILOVER_COOLDOWN_MS = {
+    401: 10 * 60000, // key rejected
+    403: 10 * 60000, // key lacks permission / API disabled for its project
+    429: 60000, // this key's quota or rate limit
+};
+const MAX_KEYS_PER_PROVIDER = 5;
+// Per server instance: keys that just failed are tried after healthy ones for a short while.
+const keyCooldownUntil = new Map();
+/** Active keys in priority order (cooling-down keys last), then the server environment key if it is different. */
+const providerKeyCandidates = async (supabase, provider) => {
+    const { data, error } = await supabase
+        .from('ai_provider_keys')
+        .select('id,provider_id,label,key_ciphertext,status,priority')
+        .eq('provider_id', provider.id)
+        .eq('status', 'active')
+        .order('priority', { ascending: false });
+    if (error)
+        throw new Error(error.message || 'Failed to load provider keys');
+    const now = Date.now();
+    const keys = (data ?? []);
+    const ordered = [...keys.filter((k) => (keyCooldownUntil.get(k.id) ?? 0) <= now), ...keys.filter((k) => (keyCooldownUntil.get(k.id) ?? 0) > now)];
+    const candidates = [];
+    for (const k of ordered) {
+        try {
+            candidates.push({ pkey: k, apiKey: decryptSecret(k.key_ciphertext) });
+        }
+        catch {
+            // unreadable key (e.g. encryption secret changed) — skip it
+        }
+    }
+    const env = envKeyForProvider(provider);
+    if (env && !candidates.some((c) => c.apiKey === env))
+        candidates.push({ pkey: null, apiKey: env });
+    return candidates.slice(0, MAX_KEYS_PER_PROVIDER);
+};
 const resolveProviderModelName = async (supabase, modelPk, providerId) => {
     const { data, error } = await supabase
         .from('ai_model_mappings')
@@ -392,32 +428,37 @@ export const runModelRequest = async ({ supabase, userId, requestedModelId, prom
             const mapping = await resolveProviderModelName(supabase, effectiveModel.id, provider.id);
             if (!mapping)
                 throw new Error('Model not mapped to provider');
-            let pkey = null;
-            let apiKey = '';
-            try {
-                pkey = await pickProviderKey(supabase, provider.id, provider.key);
-                apiKey = decryptSecret(pkey.key_ciphertext);
-            }
-            catch (err) {
-                const msg = err instanceof Error ? err.message : '';
-                if (msg.startsWith('No active API key configured for provider')) {
-                    apiKey = envKeyForProvider(provider);
-                    if (!apiKey)
-                        throw err;
-                }
-                else {
-                    throw err;
-                }
-            }
+            const candidates = await providerKeyCandidates(supabase, provider);
+            if (!candidates.length)
+                throw new Error(`No active API key configured for provider: ${provider.key}`);
             const baseUrl = provider.base_url || (provider.key === 'gemini' ? 'https://generativelanguage.googleapis.com' : 'https://api.openai.com/v1');
-            const callResult = provider.auth_type === 'google'
-                ? await callGeminiGenerateContent({ baseUrl, apiKey, model: mapping, promptText, generation })
-                : await callOpenAiChatCompletions({ baseUrl, apiKey, model: mapping, promptText, generation });
-            if (!callResult.ok) {
-                lastError = { status: callResult.status, code: `provider_http_${callResult.status}`, details: callResult.raw.slice(0, 1200) };
-                if (pkey)
-                    await supabase.from('ai_provider_keys').update({ last_error_at: nowIso() }).eq('id', pkey.id);
-                if (isRetryableStatus(callResult.status))
+            // Try this provider's keys in priority order. Another key only helps when the failure is about
+            // the key itself (rejected, or its own quota/rate limit); otherwise move on to the next provider.
+            let pkey = null;
+            let callResult = null;
+            for (let k = 0; k < candidates.length; k++) {
+                const candidate = candidates[k];
+                const result = provider.auth_type === 'google'
+                    ? await callGeminiGenerateContent({ baseUrl, apiKey: candidate.apiKey, model: mapping, promptText, generation })
+                    : await callOpenAiChatCompletions({ baseUrl, apiKey: candidate.apiKey, model: mapping, promptText, generation });
+                if (result.ok) {
+                    pkey = candidate.pkey;
+                    callResult = result;
+                    if (k > 0)
+                        usedFallback = true;
+                    break;
+                }
+                lastError = { status: result.status, code: `provider_http_${result.status}`, details: result.raw.slice(0, 1200) };
+                if (candidate.pkey)
+                    await supabase.from('ai_provider_keys').update({ last_error_at: nowIso() }).eq('id', candidate.pkey.id);
+                const cooldown = KEY_FAILOVER_COOLDOWN_MS[result.status];
+                if (!cooldown)
+                    break;
+                if (candidate.pkey)
+                    keyCooldownUntil.set(candidate.pkey.id, Date.now() + cooldown);
+            }
+            if (!callResult) {
+                if (lastError?.status && isRetryableStatus(lastError.status))
                     continue;
                 break;
             }
@@ -547,7 +588,7 @@ export const describeProviderError = (status, raw) => {
     if (status === 429)
         return `Quota or rate limit reached${text.includes('free_tier') || text.includes('free tier') ? ' (free tier)' : ''}.${retry ? ` Resets in about ${retry.replace(/\.\d+s/, 's')}.` : ''}`;
     if (status >= 500)
-        return 'The provider is temporarily unavailable. Try again shortly.';
+        return `The provider is overloaded or temporarily down (HTTP ${status}). This is on the provider's side — your key is fine. Try again in a minute.`;
     if (status === 400)
         return 'The provider rejected the request (bad request). The model may not support text generation.';
     return `Provider returned HTTP ${status}.`;
@@ -608,7 +649,7 @@ export const probeProviderModel = async ({ supabase, providerId, modelName, keyI
     const base = defaultBaseUrl(provider);
     const prompt = 'Reply with exactly this JSON and nothing else: {"ok": true}';
     const started = Date.now();
-    const { resp, text } = provider.auth_type === 'google'
+    const send = async () => provider.auth_type === 'google'
         ? await safeFetch(`${base}/v1beta/models/${encodeURIComponent(modelName)}:generateContent`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key.apiKey },
@@ -622,6 +663,12 @@ export const probeProviderModel = async ({ supabase, providerId, modelName, keyI
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key.apiKey}` },
             body: JSON.stringify({ model: modelName, messages: [{ role: 'user', content: prompt }], temperature: 0, response_format: { type: 'json_object' } }),
         }, 35000);
+    let { resp, text } = await send();
+    // Provider-side blips (overloaded, timeouts) are common on free tiers: retry once before reporting.
+    if (resp.status === 0 || resp.status === 408 || resp.status >= 500) {
+        await new Promise((r) => setTimeout(r, 1500));
+        ({ resp, text } = await send());
+    }
     const latency = Date.now() - started;
     if (key.keyId)
         await supabase.from('ai_provider_keys').update(resp.ok ? { last_used_at: nowIso() } : { last_error_at: nowIso() }).eq('id', key.keyId);

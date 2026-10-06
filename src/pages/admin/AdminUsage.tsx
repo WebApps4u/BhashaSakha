@@ -13,6 +13,7 @@ type UserUsage = {
   display_name: string | null
   plan_code: string
   total_requests: number
+  plan_usage: { requests_used: number; request_limit: number | null; chars_used: number; char_limit: number | null; state: 'ok' | 'near' | 'exhausted' }
   quotas: Quota[]
   state: 'ok' | 'near' | 'exhausted'
   last_active_at: string | null
@@ -234,7 +235,10 @@ export default function AdminUsage() {
                         </td>
                         <td className="py-3 pr-3">
                           <div className="space-y-2">
-                            {u.quotas.length ? u.quotas.map((q) => <QuotaBar key={q.model_pk} quota={q} />) : <span className="text-slate-500">No usage</span>}
+                            <PlanBars usage={u.plan_usage} />
+                            {u.quotas.map((q) => (
+                              <QuotaBar key={q.model_pk} quota={q} />
+                            ))}
                           </div>
                         </td>
                         <td className="py-3 pr-3 text-slate-600">{timeAgo(u.last_active_at)}</td>
@@ -257,7 +261,7 @@ export default function AdminUsage() {
 
       {managing && data ? (
         <ManageUserModal
-          user={managing}
+          user={data.users.find((u) => u.user_id === managing.user_id) ?? managing}
           month={data.month}
           onClose={() => setManaging(null)}
           onChanged={async () => {
@@ -301,6 +305,22 @@ function Panel({ title, subtitle, actions, children }: { title: string; subtitle
 
 function Empty({ children }: { children: ReactNode }) {
   return <div className="py-6 text-center text-sm text-slate-500">{children}</div>
+}
+
+const stateOf = (used: number, limit: number | null): QuotaState => (limit && used >= limit ? 'exhausted' : limit && used / limit >= 0.8 ? 'near' : 'ok')
+
+/** Plan-level meter (Plans page limits: monthly requests and characters across all translation). */
+function PlanBars({ usage }: { usage: UserUsage['plan_usage'] }) {
+  return (
+    <>
+      <QuotaBar
+        quota={{ model_pk: 'plan-req', model_id: 'plan', display_name: 'Plan: translation requests', used: usage.requests_used, limit: usage.request_limit, remaining: usage.request_limit ? Math.max(0, usage.request_limit - usage.requests_used) : null, state: stateOf(usage.requests_used, usage.request_limit), overridden: false }}
+      />
+      <QuotaBar
+        quota={{ model_pk: 'plan-chars', model_id: 'plan', display_name: 'Plan: characters', used: usage.chars_used, limit: usage.char_limit, remaining: usage.char_limit ? Math.max(0, usage.char_limit - usage.chars_used) : null, state: stateOf(usage.chars_used, usage.char_limit), overridden: false }}
+      />
+    </>
+  )
 }
 
 function QuotaBar({ quota: q }: { quota: Quota }) {
@@ -433,6 +453,29 @@ function ManageUserModal({ user, month, onClose, onChanged }: { user: UserUsage;
           <button type="button" onClick={() => void savePlan()} disabled={plan === user.plan_code || busy !== null} className="rounded-xl bg-slate-900 px-4 py-2 text-sm text-white disabled:opacity-40">
             {busy === 'plan' ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Change plan'}
           </button>
+        </div>
+
+        <div className="mt-5 rounded-xl border border-slate-200 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="text-sm font-medium text-slate-900">Plan usage this month</div>
+              <div className="text-xs text-slate-500">Monthly translation requests and characters, limited by the plan (set on the Plans page).</div>
+            </div>
+            <button
+              type="button"
+              disabled={busy !== null || (!user.plan_usage.requests_used && !user.plan_usage.chars_used)}
+              onClick={() => {
+                if (!window.confirm(`Reset this user's plan usage for ${month} to 0?`)) return
+                void run('reset-plan', () => adminApi('/ai/usage/reset', { body: { user_id: user.user_id, month, scope: 'plan' } }).then(() => undefined), "Plan usage was reset for this month.")
+              }}
+              className="inline-flex items-center gap-1 self-start rounded-xl border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-30"
+            >
+              {busy === 'reset-plan' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />} Reset plan usage
+            </button>
+          </div>
+          <div className="mt-3 space-y-2">
+            <PlanBars usage={user.plan_usage} />
+          </div>
         </div>
 
         <div className="mt-5 text-sm font-medium text-slate-900">Limits per AI model</div>

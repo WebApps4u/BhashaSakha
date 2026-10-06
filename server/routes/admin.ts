@@ -1494,9 +1494,10 @@ router.post('/ai/usage/reset', async (req: Request, res: Response) => {
     const userId = typeof req.body?.user_id === 'string' ? req.body.user_id : ''
     const month = typeof req.body?.month === 'string' && /^\d{4}-\d{2}$/.test(req.body.month) ? req.body.month : ''
     const modelPk = typeof req.body?.model_pk === 'string' ? req.body.model_pk : null
+    const scope = req.body?.scope === 'plan' ? 'plan' : 'models'
     if (!userId || !month) return jsonError(res, 400, 'user_id and month are required')
-    await resetUserUsage(adminClient() as any, userId, month, modelPk)
-    await audit({ actorId: a.userId, token: a.token, action: 'reset_usage', entityType: 'ai_usage_month', entityId: userId, meta: { month, model_pk: modelPk } })
+    await resetUserUsage(adminClient() as any, userId, month, modelPk, scope)
+    await audit({ actorId: a.userId, token: a.token, action: 'reset_usage', entityType: scope === 'plan' ? 'usage_month' : 'ai_usage_month', entityId: userId, meta: { month, model_pk: modelPk, scope } })
     res.status(200).json({ success: true })
   } catch (err) {
     jsonError(res, 500, err instanceof Error ? err.message : 'Server error')
