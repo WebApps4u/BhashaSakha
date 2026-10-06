@@ -22,6 +22,7 @@ import AdminAIRouting from '@/pages/admin/AdminAIRouting'
 import AdminAIEntitlements from '@/pages/admin/AdminAIEntitlements'
 import Setup from '@/pages/Setup'
 import { isSupabaseConfigured, supabaseConfigError } from '@/lib/supabaseClient'
+import { DEFAULT_LIVE_PATH } from '@/lib/liveSections'
 
 function NotFound() {
   return (
@@ -53,8 +54,9 @@ export default function App() {
           <Route path="logs" element={<AdminLogs />} />
         </Route>
         <Route element={<AppShell />}>
-          <Route path="/" element={<Navigate to="/live" replace />} />
-          <Route path="/live" element={<Live />} />
+          <Route path="/" element={<Navigate to={DEFAULT_LIVE_PATH} replace />} />
+          <Route path="/live" element={<Navigate to={DEFAULT_LIVE_PATH} replace />} />
+          <Route path="/live/:category" element={<Live />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/login" element={<Auth />} />
           <Route path="/account" element={<Account />} />

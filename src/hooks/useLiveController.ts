@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabaseClient'
 import { useSettingsStore } from '@/store/settingsStore'
 import { playServerTts } from '@/utils/tts'
 import { extractRisks } from '@/utils/risk'
+import type { SessionMode } from '@/lib/liveSections'
 
 type SegmentRow = {
   id: string
@@ -33,7 +34,7 @@ export function useLiveController({
   userId: string | null
   privacy: 'private' | 'shareable'
   sourceLang: string
-  sessionMode: 'general' | 'banking' | 'interview'
+  sessionMode: SessionMode
   isTranslateOn: boolean
   targetLangs: string[]
   speakerLabel: string

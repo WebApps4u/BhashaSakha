@@ -14,8 +14,6 @@ export default function LiveSettingsModal({
   open,
   speakerLabel,
   onSpeakerLabel,
-  sessionMode,
-  onSessionMode,
   targetLang,
   onTargetLang,
   targetLangs,
@@ -30,8 +28,6 @@ export default function LiveSettingsModal({
   open: boolean
   speakerLabel: string
   onSpeakerLabel: (label: string) => void
-  sessionMode: 'general' | 'banking' | 'interview'
-  onSessionMode: (mode: 'general' | 'banking' | 'interview') => void
   targetLang: string
   onTargetLang: (lang: string) => void
   targetLangs: string[]
@@ -100,19 +96,6 @@ export default function LiveSettingsModal({
         <div className="px-8 pb-8 pt-6">
 
         <div className="grid gap-8 md:grid-cols-2">
-          <label className="grid gap-2 text-xs font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
-            Mode
-            <select
-              value={sessionMode}
-              onChange={(e) => onSessionMode(e.target.value as any)}
-              className="minimal-input text-black dark:text-white"
-            >
-              <option value="general">General</option>
-              <option value="banking">Banking / Finance</option>
-              <option value="interview">Interview / Meeting</option>
-            </select>
-          </label>
-
           <label className="grid gap-2 text-xs font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
             {t('settings.uiLanguage')}
             <select

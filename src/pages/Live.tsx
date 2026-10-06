@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
 import { useSpeechCaptions } from '@/hooks/useSpeechCaptions'
 import { useLanguageDetector } from '@/hooks/useLanguageDetector'
@@ -13,8 +13,17 @@ import { useLiveController } from '@/hooks/useLiveController'
 import { useTranslation } from 'react-i18next'
 import { useSettingsStore } from '@/store/settingsStore'
 import { cn } from '@/lib/utils'
+import { DEFAULT_LIVE_PATH, getLiveSection, type LiveSection } from '@/lib/liveSections'
 
 export default function Live() {
+  const { category } = useParams()
+  const section = getLiveSection(category)
+  if (!section) return <Navigate to={DEFAULT_LIVE_PATH} replace />
+
+  return <LiveWorkspace section={section} />
+}
+
+function LiveWorkspace({ section }: { section: LiveSection }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { user, isReady } = useAuthStore()
@@ -22,7 +31,7 @@ export default function Live() {
   const [mode, setMode] = useState<LiveMode>('translate')
   const [privacy, setPrivacy] = useState<'private' | 'shareable'>('private')
 
-  const [sessionMode, setSessionMode] = useState<'general' | 'banking' | 'interview'>('general')
+  const sessionMode = section.id
 
   const [sourceLang, setSourceLang] = useState('en')
   const [targetLang, setTargetLang] = useState('hi')
@@ -157,8 +166,7 @@ export default function Live() {
         <LiveHeader
           mode={mode}
           onMode={setMode}
-          sessionMode={sessionMode}
-          onSessionMode={setSessionMode}
+          section={section}
           privacy={privacy}
           onPrivacy={setPrivacy}
           sourceLang={sourceLang}
@@ -218,8 +226,6 @@ export default function Live() {
         open={showSettings}
         speakerLabel={speakerLabel}
         onSpeakerLabel={setSpeakerLabel}
-        sessionMode={sessionMode}
-        onSessionMode={setSessionMode}
         targetLang={targetLang}
         onTargetLang={(v) => {
           setTargetLang(v)

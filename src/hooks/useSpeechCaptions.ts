@@ -19,6 +19,12 @@ export function useSpeechCaptions({
   const [interim, setInterim] = useState('')
   const [micLevel, setMicLevel] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const onFinalRef = useRef(onFinal)
+
+  // Recognition handlers outlive renders; use the current section and settings.
+  useEffect(() => {
+    onFinalRef.current = onFinal
+  }, [onFinal])
 
   const recognitionRef = useRef<SpeechRecognition | null>(null)
   const micStreamRef = useRef<MediaStream | null>(null)
@@ -154,7 +160,7 @@ export function useSpeechCaptions({
 
     try {
       if (phrases.length === 1) {
-        await onFinal({ text: phrases[0], startMs, endMs: safeEndMs })
+        await onFinalRef.current({ text: phrases[0], startMs, endMs: safeEndMs })
         return
       }
 
@@ -163,7 +169,7 @@ export function useSpeechCaptions({
       for (let i = 0; i < phrases.length; i++) {
         const s = startMs + i * step
         const e = i === phrases.length - 1 ? safeEndMs : Math.max(s + 200, startMs + (i + 1) * step)
-        await onFinal({ text: phrases[i], startMs: s, endMs: e })
+        await onFinalRef.current({ text: phrases[i], startMs: s, endMs: e })
       }
     } catch {
       // ignore
